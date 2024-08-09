@@ -973,9 +973,16 @@ async def set_image_classifier_score_v1(
                 error_string="Invalid image source provided.",
                 http_status_code=422
             )
+        
+        image_query = {
+            '$or': [
+                {'uuid': classifier_score.job_uuid},
+                {'uuid': uuid.UUID(classifier_score.job_uuid)}
+            ]
+        }
 
         # Fetch job data from the determined collection
-        job_data = collection.find_one({"uuid": classifier_score.job_uuid})
+        job_data = collection.find_one(image_query)
         if not job_data:
             return api_response_handler.create_error_response_v1(
                 error_code=ErrorCode.INVALID_PARAMS,
@@ -1064,7 +1071,7 @@ async def set_image_classifier_score_v1(
 
 @router.post("/pseudotag-classifier-scores/set-image-classifier-score-v2", 
              status_code=200,
-             response_model=StandardSuccessResponseV1[ClassifierScoreV1],
+             response_model=StandardSuccessResponseV1[ListClassifierScore2],
              description="Set classifier image scores in batch",
              tags=["pseudotag-classifier-scores"], 
              responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
@@ -1153,8 +1160,15 @@ async def set_image_classifier_score_list(
                     http_status_code=422
                 )
 
+            image_query = {
+                '$or': [
+                    {'uuid': classifier_score.job_uuid},
+                    {'uuid': uuid.UUID(classifier_score.job_uuid)}
+                ]
+            }
+
             # Fetch image_hash from the determined collection
-            job_data = collection.find_one({"uuid": classifier_score.job_uuid}, projection)
+            job_data = collection.find_one(image_query, projection)
             if not job_data:
                 return api_response_handler.create_error_response_v1(
                     error_code=ErrorCode.INVALID_PARAMS,
