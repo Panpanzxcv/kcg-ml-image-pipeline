@@ -117,8 +117,11 @@ class ImageExtractionPipeline:
 
             for rank_info in rank_model_list:
                 ranking_model_type = rank_info["model_type"]
+                rank_id = rank_info["rank_id"]
+                print(rank_id)
 
-                if  ranking_model_type != "elm-v1":
+                if  ranking_model_type != "elm-v1" or rank_id not in [0,1,3]:
+                    print(rank_id)
                     continue
 
                 rank_id = rank_info["rank_id"]
@@ -195,11 +198,11 @@ class ImageExtractionPipeline:
     
     def is_filtered(self, clip_vector):
         # check if the image is irrelevant
-        # for tag, model in self.irrelevant_image_models.items():
-        #     with torch.no_grad():
-        #         classifier_score = model.classify(clip_vector).item()
-        #     if classifier_score >= self.defect_threshold:
-        #         return True
+        for tag, model in self.irrelevant_image_models.items():
+            with torch.no_grad():
+                classifier_score = model.classify(clip_vector).item()
+            if classifier_score >= self.defect_threshold:
+                return True
 
         # check if the image has any defects
         for tag, model in self.defect_models.items():
