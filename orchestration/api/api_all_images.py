@@ -118,3 +118,36 @@ async def list_all_images(
             error_string=str(e),
             http_status_code=500
         )
+    
+
+@router.get("/all-images/get-image-by-hash", 
+            description="Retrieve an image from all-images collection by its hash",
+            tags=["all-images"],  
+            response_model=StandardSuccessResponseV1[ListAllImagesResponse],  
+            responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
+async def get_image_by_hash(request: Request, image_hash: str):
+    api_response_handler = await ApiResponseHandlerV1.createInstance(request)
+    
+    try:
+        # Find the image in the all-images collection by its hash
+        image_data = request.app.all_image_collection.find_one({"image_hash": image_hash})
+        
+        if image_data is None:
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.ELEMENT_NOT_FOUND, 
+                error_string="Image with this hash does not exist in the all-images collection",
+                http_status_code=404
+            )
+        
+        # Return the found image data
+        return api_response_handler.create_success_response_v1(
+            response_data=image_data,
+            http_status_code=200  
+        )
+    
+    except Exception as e:
+        return api_response_handler.create_error_response_v1(
+            error_code=ErrorCode.OTHER_ERROR, 
+            error_string=str(e),
+            http_status_code=500
+        )
