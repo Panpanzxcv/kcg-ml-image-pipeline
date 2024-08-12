@@ -155,7 +155,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 @app.on_event("startup")
 def startup_db_client():
     # add creation of mongodb here for now
-    app.mongodb_client = pymongo.MongoClient(config["DB_URL"])
+    app.mongodb_client = pymongo.MongoClient(config["DB_URL"], uuidRepresentation='standard')
     app.mongodb_db = app.mongodb_client["orchestration-job-db"]
     app.users_collection = app.mongodb_db["users"]
     app.pending_jobs_collection = app.mongodb_db["pending-jobs"]
@@ -281,13 +281,28 @@ def startup_db_client():
     ]
     create_index_if_not_exists(app.external_images_collection ,external_images_hashx, 'external_images_hashx')
     
-
     external_images_creation_time_index=[
     ('upload_date', pymongo.ASCENDING)
     ]
     create_index_if_not_exists(app.external_images_collection ,external_images_creation_time_index, 'external_images_creation_time_index')
 
     app.extracts_collection = app.mongodb_db["extracts"]
+    
+    extracts_dataset_index=[
+    ('dataset', pymongo.ASCENDING)
+    ]
+    create_index_if_not_exists(app.extracts_collection ,extracts_dataset_index, 'extracts_dataset_index')
+
+    extracts_dataset_hashx=[
+    ('image_hash', pymongo.ASCENDING)
+    ]
+    create_index_if_not_exists(app.extracts_collection ,extracts_dataset_hashx, 'extracts_dataset_hashx')
+    
+    extracts_creation_time_index=[
+    ('upload_date', pymongo.ASCENDING)
+    ]
+    create_index_if_not_exists(app.extracts_collection ,extracts_creation_time_index, 'extracts_creation_time_index')
+
     app.ingress_video_collection = app.mongodb_db["ingress_videos"]
     app.external_dataset_sequential_id = app.mongodb_db["external_dataset_sequential_id"]
 
