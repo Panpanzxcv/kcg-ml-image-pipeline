@@ -139,6 +139,7 @@ async def get_image_by_hash(request: Request, image_hash: str):
                 http_status_code=404
             )
         
+        image_data.pop('_id', None)
         # Return the found image data
         return api_response_handler.create_success_response_v1(
             response_data=image_data,
