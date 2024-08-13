@@ -18,6 +18,7 @@ from datetime import datetime
 import os
 from typing import List, Union
 from urllib.parse import urlparse, parse_qs
+import random
 
 
 class IrrelevantResponse(BaseModel):
@@ -678,3 +679,71 @@ def api_date_to_unix_int32(date_str: str):
         # Print error message if date parsing fails
         print(f"Error parsing date string: {e}")
         return None
+    
+
+
+def determine_bucket_id(file_path):
+    if "extracts" in file_path:
+        return 1
+    elif "external" in file_path:
+        return 2
+    else:
+        raise ValueError(f"Unknown bucket ID for file_path: {file_path}")
+
+def generate_uuid(task_creation_time):
+    formats = ["%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%d %H:%M:%S.%f"]
+    for fmt in formats:
+        try:
+            dt = datetime.strptime(task_creation_time, fmt)
+            break
+        except ValueError:
+            continue
+    else:
+        raise ValueError(f"time data '{task_creation_time}' does not match any known format")
+    
+    unix_time = int(time.mktime(dt.timetuple()))
+    unix_time_32bit = unix_time & 0xFFFFFFFF
+    random_32bit = random.randint(0, 0xFFFFFFFF)
+    uuid = (random_32bit & 0xFFFFFFFF) | (unix_time_32bit << 32)
+    return uuid
+
+def datetime_to_unix_int32(dt_str):
+    formats = ["%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%d %H:%M:%S.%f"]
+    for fmt in formats:
+        try:
+            dt = datetime.strptime(dt_str, fmt)
+            break
+        except ValueError:
+            continue
+    else:
+        raise ValueError(f"time data '{dt_str}' does not match any known format")
+    
+    unix_time = int(time.mktime(dt.timetuple()))
+    return unix_time & 0xFFFFFFFF
+
+def insert_into_all_images(image_data, dataset_id, all_images_collection):
+    try:
+        # Determine the bucket ID based on the file_path
+        bucket_id = determine_bucket_id(image_data.get("file_path"))
+
+        # Generate UUID and Unix timestamp
+        task_creation_time = image_data.get("upload_date", str(datetime.now()))
+        uuid_value = generate_uuid(task_creation_time)
+        date_int32 = datetime_to_unix_int32(task_creation_time)
+
+        # Create the document to be inserted
+        new_document = {
+            "uuid": uuid_value,
+            "index": -1,  # Not used but included as per requirement
+            "bucket_id": bucket_id,
+            "dataset_id": dataset_id,
+            "image_hash": image_data.get("image_hash"),
+            "image_path": image_data.get("file_path"),
+            "date": date_int32,
+        }
+
+        all_images_collection.insert_one(new_document)
+        print(f"Inserted new document into all-images collection: {new_document}")
+
+    except Exception as e:
+        print(f"Error inserting into all-images collection: {e}")

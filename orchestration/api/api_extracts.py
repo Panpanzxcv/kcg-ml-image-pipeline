@@ -4,7 +4,7 @@ from orchestration.api.mongo_schema.extracts_schemas import ExtractsHelpers
 from utility.path import separate_bucket_and_file_path
 from .mongo_schemas import AffectedCountResponse, ExtractImageData, ListExtractImageData, Dataset, ListExtractImageDataV1, ListDataset , ListExtractImageDataWithScore, ExtractImageDataV1
 from pymongo import ReturnDocument, UpdateOne
-from .api_utils import ApiResponseHandlerV1, StandardSuccessResponseV1, ErrorCode, WasPresentResponse, TagCountResponse, get_minio_file_path, get_next_external_dataset_seq_id, update_external_dataset_seq_id, validate_date_format, TagListForImages, TagListForImagesV1,PrettyJSONResponse
+from .api_utils import ApiResponseHandlerV1, StandardSuccessResponseV1, ErrorCode, WasPresentResponse, TagCountResponse, get_minio_file_path, get_next_external_dataset_seq_id, update_external_dataset_seq_id, validate_date_format, TagListForImages, TagListForImagesV1,PrettyJSONResponse, insert_into_all_images
 from orchestration.api.mongo_schema.tag_schemas import ListExternalImageTag, ImageTag
 from datetime import datetime
 from typing import Optional
@@ -13,11 +13,14 @@ from typing import List
 from datetime import datetime, timedelta
 import random
 from .api_clip import http_clip_server_get_cosine_similarity_list
+import time
 
 
 router = APIRouter()
 
 extracts = "extract_image"
+
+
 
 @router.get("/extracts/get-current-data-batch-sequential-id", 
             description="Get the sequential id for file batches stored for a dataset",
@@ -122,6 +125,8 @@ async def add_extract(request: Request, image_data: ExtractImageData):
                 error_string=f"{image_data.dataset} dataset does not exist",
                 http_status_code=422
             )
+        
+        dataset_id = dataset_result["dataset_id"]
 
         image_data.uuid = str(uuid.uuid4())
 
@@ -143,6 +148,11 @@ async def add_extract(request: Request, image_data: ExtractImageData):
             data_to_save['uuid'] = uuid.UUID(image_data.uuid)
 
             request.app.extracts_collection.insert_one(data_to_save)
+
+            # Insert into all-images collection
+            all_images_collection = request.app.all_image_collection
+            insert_into_all_images(data_to_save, dataset_id, all_images_collection)
+
         else:
             return api_response_handler.create_error_response_v1(
                 error_code=ErrorCode.INVALID_PARAMS,
@@ -206,12 +216,13 @@ async def tmp_update_uuid(request: Request, batch_size: int = Query(..., descrip
 @router.post("/extracts/add-extracted-image-v1", 
             description="Add an extracted image data",
             tags=["extracts"],  
-            response_model=StandardSuccessResponseV1[ExtractImageData],  
+            response_model=StandardSuccessResponseV1[ExtractImageDataV1],  
             responses=ApiResponseHandlerV1.listErrors([404,422, 500]))
 async def add_extract(request: Request, image_data: ExtractImageDataV1):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
-
+    
     try:
+        # Check if dataset exists
         dataset_result = request.app.datasets_collection.find_one({"dataset_name": image_data.dataset, "bucket_id": 1})
 
         if not dataset_result:
@@ -220,22 +231,26 @@ async def add_extract(request: Request, image_data: ExtractImageDataV1):
                 error_string=f"{image_data.dataset} dataset does not exist",
                 http_status_code=422
             )
+        
+        dataset_id = dataset_result["dataset_id"]
 
-        existed = request.app.extracts_collection.find_one({
-            "image_hash": image_data.image_hash
-        })
-
+        # Check if image already exists
+        existed = request.app.extracts_collection.find_one({"image_hash": image_data.image_hash})
         if existed is None:
+            # Insert into extracts collection
             image_data_dict = image_data.to_dict()
             image_data_dict['uuid'] = uuid.uuid4()
             image_data_dict['old_uuid_string'] = str(image_data_dict['uuid'])
             image_data_dict['upload_date'] = str(datetime.now())
             next_seq_id = get_next_external_dataset_seq_id(request, bucket="extracts", dataset=image_data.dataset)
             image_data_dict['file_path'] = get_minio_file_path(next_seq_id, "extracts", image_data.dataset, 'jpg')
-
-            
             request.app.extracts_collection.insert_one(image_data_dict)
-            
+
+            # Insert into all-images collection
+            all_images_collection = request.app.all_image_collection
+            insert_into_all_images(image_data_dict, dataset_id, all_images_collection)
+
+        
         else:
             return api_response_handler.create_error_response_v1(
                 error_code=ErrorCode.INVALID_PARAMS,
@@ -243,11 +258,13 @@ async def add_extract(request: Request, image_data: ExtractImageDataV1):
                 http_status_code=400
             )
         
+        # Update sequence ID
         update_external_dataset_seq_id(request=request, bucket="extracts", dataset=image_data.dataset, seq_id=next_seq_id) 
 
+        # Prepare and return the response
         ExtractsHelpers.clean_extract_for_api_response(image_data_dict)
         return api_response_handler.create_success_response_v1(
-            response_data= image_data_dict,
+            response_data=image_data_dict,
             http_status_code=200  
         )
     
@@ -256,7 +273,42 @@ async def add_extract(request: Request, image_data: ExtractImageDataV1):
             error_code=ErrorCode.OTHER_ERROR, 
             error_string=str(e),
             http_status_code=500
-        )      
+        )    
+    
+
+@router.delete("/extracts/remove-extracted-image-by-hash", 
+            description="Remove an extracted image by its hash",
+            tags=["extracts"],  
+            response_model=StandardSuccessResponseV1[WasPresentResponse],  
+            responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
+async def remove_extracted_image_by_hash(request: Request, image_hash: str):
+    api_response_handler = await ApiResponseHandlerV1.createInstance(request)
+    
+    try:
+        # Check if the image exists in the extracts collection
+        existed = request.app.extracts_collection.find_one({"image_hash": image_hash})
+        if existed is None:
+            return api_response_handler.create_success_delete_response_v1(
+                False,
+                http_status_code=200
+            )
+        
+        # Remove the image from the extracts collection
+        request.app.extracts_collection.delete_one({"image_hash": image_hash})
+        
+
+        return api_response_handler.create_success_delete_response_v1(
+            True,
+            http_status_code=200  
+        )
+    
+    except Exception as e:
+        return api_response_handler.create_error_response_v1(
+            error_code=ErrorCode.OTHER_ERROR, 
+            error_string=str(e),
+            http_status_code=500
+        )
+
 
 @router.get("/extracts/get-all-extracts-list", 
             description="Get all extracted images. If 'dataset' parameter is set, it only returns images from that dataset, and if the 'size' parameter is set, a random sample of that size will be returned.",

@@ -5,7 +5,7 @@ import pymongo
 from utility.minio import cmd
 from utility.path import separate_bucket_and_file_path
 from .mongo_schemas import Task, ImageMetadata, UUIDImageMetadata, ListTask
-from .api_utils import PrettyJSONResponse, StandardSuccessResponseV1, ApiResponseHandlerV1, UrlResponse, ErrorCode, api_date_to_unix_int32
+from .api_utils import PrettyJSONResponse, StandardSuccessResponseV1, ApiResponseHandlerV1, WasPresentResponse, ErrorCode, api_date_to_unix_int32
 from .api_ranking import get_image_rank_use_count
 import os
 from .api_utils import find_or_create_next_folder_and_index
@@ -17,7 +17,7 @@ import time
 
 router = APIRouter()
 
-@router.get("/all-images/list",
+@router.get("/all-images/list-images",
             description="list images according dataset_id and bucket_id",
             tags=["all-images"],
             response_model=StandardSuccessResponseV1[ListAllImagesResponse],
@@ -29,8 +29,8 @@ async def list_all_images(
     limit: int = Query(20, description="Limit on the number of results returned"),
     offset: int = Query(0, description="Offset for the results to be returned"),
     order: str = Query("desc", description="Order in which the data should be returned. 'asc' for oldest first, 'desc' for newest first"),
-    start_date: Optional[str] = Query(None, description="Start date for filtering results"),
-    end_date: Optional[str] = Query(None, description="End date for filtering results"),
+    start_date: Optional[str] = Query(None, description="Start date for filtering results, Must be in the format 'YYYY-MM-DDTHH:MM:SS "),
+    end_date: Optional[str] = Query(None, description="End date for filtering results, Must be in the format 'YYYY-MM-DDTHH:MM:SS"),
     time_interval: Optional[int] = Query(None, description="Time interval in minutes or hours"),
     time_unit: str = Query("minutes", description="Time unit, either 'minutes' or 'hours'")
 ):
@@ -57,7 +57,7 @@ async def list_all_images(
             if start_date_unix is None:
                 return response_handler.create_error_response_v1(
                     error_code=ErrorCode.OTHER_ERROR,
-                    error_string="Invalid end_date format. Expected format: YYYY-MM-DDTHH:MM:SS",
+                    error_string="Invalid start_date format. Expected format: YYYY-MM-DDTHH:MM:SS",
                     http_status_code=422
                 )
             date_query['$gte'] = start_date_unix
@@ -115,6 +115,71 @@ async def list_all_images(
         print(f"Exception: {e}")
         return response_handler.create_error_response_v1(
             error_code=ErrorCode.OTHER_ERROR,
+            error_string=str(e),
+            http_status_code=500
+        )
+    
+
+@router.get("/all-images/get-image-by-hash", 
+            description="Retrieve an image from all-images collection by its hash",
+            tags=["all-images"],  
+            response_model=StandardSuccessResponseV1[ListAllImagesResponse],  
+            responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
+async def get_image_by_hash(request: Request, image_hash: str):
+    api_response_handler = await ApiResponseHandlerV1.createInstance(request)
+    
+    try:
+        # Find the image in the all-images collection by its hash
+        image_data = request.app.all_image_collection.find_one({"image_hash": image_hash})
+        
+        if image_data is None:
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.ELEMENT_NOT_FOUND, 
+                error_string="Image with this hash does not exist in the all-images collection",
+                http_status_code=404
+            )
+        
+        image_data.pop('_id', None)
+        # Return the found image data
+        return api_response_handler.create_success_response_v1(
+            response_data=image_data,
+            http_status_code=200  
+        )
+    
+    except Exception as e:
+        return api_response_handler.create_error_response_v1(
+            error_code=ErrorCode.OTHER_ERROR, 
+            error_string=str(e),
+            http_status_code=500
+        )
+
+@router.delete("/all-images/delete-image", 
+            description="Delete an image data",
+            tags=["all-images"],  
+            response_model=StandardSuccessResponseV1[WasPresentResponse],  
+            responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
+async def delete_image_data(request: Request, image_hash: str):
+    api_response_handler = await ApiResponseHandlerV1.createInstance(request)
+
+    try:
+        result = request.app.all_image_collection.delete_one({
+            "image_hash": image_hash
+        })
+        
+        if result.deleted_count == 0:
+            return api_response_handler.create_success_delete_response_v1(
+                False, 
+                http_status_code=200
+            )
+        
+        return api_response_handler.create_success_delete_response_v1(
+                True, 
+                http_status_code=200
+            )
+    
+    except Exception as e:
+        return api_response_handler.create_error_response_v1(
+            error_code=ErrorCode.OTHER_ERROR, 
             error_string=str(e),
             http_status_code=500
         )
