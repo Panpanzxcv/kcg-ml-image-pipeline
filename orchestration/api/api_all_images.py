@@ -5,7 +5,7 @@ import pymongo
 from utility.minio import cmd
 from utility.path import separate_bucket_and_file_path
 from .mongo_schemas import Task, ImageMetadata, UUIDImageMetadata, ListTask
-from .api_utils import PrettyJSONResponse, StandardSuccessResponseV1, ApiResponseHandlerV1, UrlResponse, ErrorCode, api_date_to_unix_int32
+from .api_utils import PrettyJSONResponse, StandardSuccessResponseV1, ApiResponseHandlerV1, WasPresentResponse, ErrorCode, api_date_to_unix_int32
 from .api_ranking import get_image_rank_use_count
 import os
 from .api_utils import find_or_create_next_folder_and_index
@@ -145,6 +145,37 @@ async def get_image_by_hash(request: Request, image_hash: str):
             response_data=image_data,
             http_status_code=200  
         )
+    
+    except Exception as e:
+        return api_response_handler.create_error_response_v1(
+            error_code=ErrorCode.OTHER_ERROR, 
+            error_string=str(e),
+            http_status_code=500
+        )
+
+@router.delete("/all-images/delete-image", 
+            description="Delete an image data",
+            tags=["all-images"],  
+            response_model=StandardSuccessResponseV1[WasPresentResponse],  
+            responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
+async def delete_image_data(request: Request, image_hash: str):
+    api_response_handler = await ApiResponseHandlerV1.createInstance(request)
+
+    try:
+        result = request.app.all_image_collection.delete_one({
+            "image_hash": image_hash
+        })
+        
+        if result.deleted_count == 0:
+            return api_response_handler.create_success_delete_response_v1(
+                False, 
+                http_status_code=200
+            )
+        
+        return api_response_handler.create_success_delete_response_v1(
+                True, 
+                http_status_code=200
+            )
     
     except Exception as e:
         return api_response_handler.create_error_response_v1(
