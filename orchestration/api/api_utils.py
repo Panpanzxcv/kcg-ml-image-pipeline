@@ -688,7 +688,8 @@ def determine_bucket_id(file_path):
     elif "external" in file_path:
         return 2
     else:
-        raise ValueError(f"Unknown bucket ID for file_path: {file_path}")
+        return 0  
+
 
 def generate_uuid(task_creation_time):
     formats = ["%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%d %H:%M:%S.%f"]
@@ -747,3 +748,36 @@ def insert_into_all_images(image_data, dataset_id, all_images_collection):
 
     except Exception as e:
         print(f"Error inserting into all-images collection: {e}")
+
+def insert_into_all_images_for_completed(image_data, dataset_id, all_images_collection):
+    try:
+        # Determine the bucket ID based on the output file path
+        file_path = image_data.get("task_output_file_dict", {}).get("output_file_path")
+        if not file_path:
+            print("No file path found in task_output_file_dict")
+            return
+        
+        bucket_id = determine_bucket_id(file_path)
+
+        # Generate UUID and Unix timestamp
+        task_creation_time = image_data.get("task_creation_time", str(datetime.now()))
+        uuid_value = generate_uuid(task_creation_time)
+        date_int32 = datetime_to_unix_int32(task_creation_time)
+
+        # Create the document to be inserted
+        new_document = {
+            "uuid": uuid_value,
+            "index": -1,  # Not used but included as per requirement
+            "bucket_id": bucket_id,
+            "dataset_id": dataset_id,
+            "image_hash": image_data.get("task_output_file_dict", {}).get("output_file_hash"),
+            "image_path": file_path,
+            "date": date_int32,
+        }
+
+        all_images_collection.insert_one(new_document)
+        print(f"Inserted new document into all-images collection: {new_document}")
+
+    except Exception as e:
+        print(f"Error inserting into all-images collection: {e}")
+    

@@ -4,7 +4,7 @@ import sys
 from fastapi import Request, APIRouter, HTTPException, Query, Body
 import numpy as np
 import msgpack
-from pymongo import ReplaceOne, UpdateOne
+from pymongo import ReplaceOne, UpdateOne, UpdateMany, ASCENDING, DESCENDING
 from utility.path import separate_bucket_and_file_path
 from utility.minio import cmd
 import uuid
@@ -12,14 +12,12 @@ from datetime import datetime, timedelta
 from orchestration.api.mongo_schemas import KandinskyTask, Task, ListSigmaScoreResponse, ListTask, JobInfoResponse, ListTaskV1
 from orchestration.api.api_dataset import get_sequential_id
 import pymongo
-from .api_utils import PrettyJSONResponse, DoneResponse
 from typing import List
 import json
 import paramiko
 from typing import Optional, Dict
 import csv
-from .api_utils import ApiResponseHandler, ErrorCode, StandardSuccessResponse, AddJob, WasPresentResponse, ApiResponseHandlerV1, StandardSuccessResponseV1, CountLastHour, CountResponse
-from pymongo import UpdateMany, ASCENDING, DESCENDING
+from .api_utils import ApiResponseHandler, ErrorCode, StandardSuccessResponse, AddJob, WasPresentResponse, ApiResponseHandlerV1, StandardSuccessResponseV1, CountLastHour, CountResponse, insert_into_all_images_for_completed, PrettyJSONResponse, DoneResponse
 from bson import ObjectId
 import time
 
@@ -519,8 +517,20 @@ def update_job_completed(request: Request, task: Task):
     if job is None:
         return False
     
+    # Extract the dataset name from the task_input_dict
+    dataset_name = job.get("task_input_dict", {}).get("dataset")
+
+    # Find the dataset in the collection
+    dataset_result = request.app.datasets_collection.find_one({"dataset_name": dataset_name, "bucket_id": 1})
+
+    dataset_id = dataset_result.get("dataset_id")
+    
     # add to completed
     request.app.completed_jobs_collection.insert_one(task.to_dict())
+
+    # Insert into all-images collection
+    all_images_collection = request.app.all_image_collection
+    insert_into_all_images_for_completed(job, dataset_id, all_images_collection)
 
     # remove from in progress
     request.app.in_progress_jobs_collection.delete_one({"uuid": task.uuid})
@@ -1620,9 +1630,23 @@ async def update_job_completed(request: Request, uuid: str):
                 error_string="Job not found",
                 http_status_code=404
             )
-        
+
+        # Extract the dataset name from the task_input_dict
+        dataset_name = job.get("task_input_dict", {}).get("dataset")
+
+        # Find the dataset in the collection
+        dataset_result = request.app.datasets_collection.find_one({"dataset_name": dataset_name, "bucket_id": 1})
+
+        dataset_id = dataset_result.get("dataset_id")
+
+
         # Move the job to the completed jobs collection
         request.app.completed_jobs_collection.insert_one(job)
+
+        # Insert into all-images collection
+        all_images_collection = request.app.all_image_collection
+        insert_into_all_images_for_completed(job, dataset_id, all_images_collection)
+
         # Remove the job from the in-progress collection
         request.app.in_progress_jobs_collection.delete_one({"uuid": uuid})
 
