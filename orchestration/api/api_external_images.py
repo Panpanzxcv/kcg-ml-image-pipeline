@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Body, Request, HTTPException, Query, status
 from typing import Optional
 from utility.path import separate_bucket_and_file_path
-from .api_utils import ApiResponseHandlerV1, StandardSuccessResponseV1, ErrorCode, WasPresentResponse, DeletedCount, validate_date_format, TagListForImages, TagCountResponse, TagListForImagesV1
+from .api_utils import ApiResponseHandlerV1, StandardSuccessResponseV1, ErrorCode, WasPresentResponse, DeletedCount, validate_date_format, TagListForImages, TagCountResponse, TagListForImagesV1, insert_into_all_images
 from .mongo_schemas import ExternalImageData, ImageHashRequest, ListExternalImageData, ListImageHashRequest, ExternalImageDataV1, ListExternalImageDataV1, ListDatasetV1, ListExternalImageDataWithSimilarityScore, Dataset, ListExternalImageDataV2, ListDataset
 from orchestration.api.mongo_schema.tag_schemas import ExternalImageTag, ListExternalImageTag, ImageTag, ListImageTag
 from typing import List
@@ -44,6 +44,7 @@ async def add_external_image_data(request: Request, image_data: ExternalImageDat
 
         # Check if the dataset exists
         dataset_result = request.app.datasets_collection.find_one({"dataset_name": image_data.dataset, "bucket_id": 2})
+        dataset_id = dataset_result["dataset_id"]
         if not dataset_result:
             return api_response_handler.create_error_response_v1(
                 error_code=ErrorCode.ELEMENT_NOT_FOUND, 
@@ -75,6 +76,9 @@ async def add_external_image_data(request: Request, image_data: ExternalImageDat
         
         # Insert the new image data into the collection
         request.app.external_images_collection.insert_one(image_data_dict)
+
+        all_images_collection = request.app.all_image_collection
+        insert_into_all_images(image_data_dict, dataset_id, all_images_collection)
         image_data_dict.pop('_id', None)
 
         # update sequential
@@ -107,6 +111,8 @@ async def add_external_image_data_list(request: Request, image_data_list: List[E
         for image_data in image_data_list:
             # Check if the dataset exists
             dataset_result = request.app.datasets_collection.find_one({"dataset_name": image_data.dataset,"bucket_id": 2 })
+            dataset_id = dataset_result["dataset_id"]
+            
             if not dataset_result:
                 return api_response_handler.create_error_response_v1(
                     error_code=ErrorCode.ELEMENT_NOT_FOUND, 
@@ -138,6 +144,9 @@ async def add_external_image_data_list(request: Request, image_data_list: List[E
                 
                 # Insert the new image data into the collection
                 request.app.external_images_collection.insert_one(image_data_dict)
+
+                all_images_collection = request.app.all_image_collection
+                insert_into_all_images(image_data_dict, dataset_id, all_images_collection)
                 # update sequential id
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(None, 

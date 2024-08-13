@@ -4,7 +4,7 @@ from orchestration.api.mongo_schema.extracts_schemas import ExtractsHelpers
 from utility.path import separate_bucket_and_file_path
 from .mongo_schemas import AffectedCountResponse, ExtractImageData, ListExtractImageData, Dataset, ListExtractImageDataV1, ListDataset , ListExtractImageDataWithScore, ExtractImageDataV1
 from pymongo import ReturnDocument, UpdateOne
-from .api_utils import ApiResponseHandlerV1, StandardSuccessResponseV1, ErrorCode, WasPresentResponse, TagCountResponse, get_minio_file_path, get_next_external_dataset_seq_id, update_external_dataset_seq_id, validate_date_format, TagListForImages, TagListForImagesV1,PrettyJSONResponse
+from .api_utils import ApiResponseHandlerV1, StandardSuccessResponseV1, ErrorCode, WasPresentResponse, TagCountResponse, get_minio_file_path, get_next_external_dataset_seq_id, update_external_dataset_seq_id, validate_date_format, TagListForImages, TagListForImagesV1,PrettyJSONResponse, insert_into_all_images
 from orchestration.api.mongo_schema.tag_schemas import ListExternalImageTag, ImageTag
 from datetime import datetime
 from typing import Optional
@@ -20,63 +20,6 @@ router = APIRouter()
 
 extracts = "extract_image"
 
-BUCKET_ID = 1  # Hardcoded bucket ID
-
-# Helper functions for processing the additional collection
-def generate_uuid(task_creation_time):
-    formats = ["%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%d %H:%M:%S.%f"]
-    for fmt in formats:
-        try:
-            dt = datetime.strptime(task_creation_time, fmt)
-            break
-        except ValueError:
-            continue
-    else:
-        raise ValueError(f"time data '{task_creation_time}' does not match any known format")
-    
-    unix_time = int(time.mktime(dt.timetuple()))
-    unix_time_32bit = unix_time & 0xFFFFFFFF
-    random_32bit = random.randint(0, 0xFFFFFFFF)
-    uuid = (random_32bit & 0xFFFFFFFF) | (unix_time_32bit << 32)
-    return uuid
-
-def datetime_to_unix_int32(dt_str):
-    formats = ["%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%d %H:%M:%S.%f"]
-    for fmt in formats:
-        try:
-            dt = datetime.strptime(dt_str, fmt)
-            break
-        except ValueError:
-            continue
-    else:
-        raise ValueError(f"time data '{dt_str}' does not match any known format")
-    
-    unix_time = int(time.mktime(dt.timetuple()))
-    return unix_time & 0xFFFFFFFF
-
-def insert_into_all_images(image_data, dataset_id, all_images_collection):
-    try:
-        # Generate UUID and Unix timestamp
-        task_creation_time = image_data.get("upload_date", str(datetime.now()))
-        uuid_value = generate_uuid(task_creation_time)
-        date_int32 = datetime_to_unix_int32(task_creation_time)
-
-        # Create the document to be inserted
-        new_document = {
-            "uuid": uuid_value,
-            "index": -1,  # Not used but included as per requirement
-            "bucket_id": BUCKET_ID,
-            "dataset_id": dataset_id,
-            "image_hash": image_data.get("image_hash"),
-            "image_path": image_data.get("file_path"),
-            "date": date_int32,
-        }
-
-        all_images_collection.insert_one(new_document)
-        print(f"Inserted new document into all-images collection: {new_document}")
-
-    except Exception as e:
-        print(f"Error inserting into all-images collection: {e}")
 
 
 @router.get("/extracts/get-current-data-batch-sequential-id", 
@@ -182,6 +125,8 @@ async def add_extract(request: Request, image_data: ExtractImageData):
                 error_string=f"{image_data.dataset} dataset does not exist",
                 http_status_code=422
             )
+        
+        dataset_id = dataset_result["dataset_id"]
 
         image_data.uuid = str(uuid.uuid4())
 
@@ -203,6 +148,11 @@ async def add_extract(request: Request, image_data: ExtractImageData):
             data_to_save['uuid'] = uuid.UUID(image_data.uuid)
 
             request.app.extracts_collection.insert_one(data_to_save)
+
+            # Insert into all-images collection
+            all_images_collection = request.app.all_image_collection
+            insert_into_all_images(data_to_save, dataset_id, all_images_collection)
+
         else:
             return api_response_handler.create_error_response_v1(
                 error_code=ErrorCode.INVALID_PARAMS,
