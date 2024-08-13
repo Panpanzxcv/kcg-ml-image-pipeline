@@ -72,6 +72,17 @@ def process_batch(batch):
 # Process a single job
 def process_job(job, dataset_mapping, existing_image_paths, bucket_id):
     dataset_name = job.get("dataset")
+
+    image_path = job.get("file_path")
+
+    if image_path in existing_image_paths:
+        print(f"Skipping job with image_path {image_path} as it has already been processed")
+        return None  # Skip if image_path already exists
+    
+    if not image_path:
+        print("Skipping job due to missing image_path")
+        return None  # Skip if image_path is not available
+    
     if not dataset_name:
         print("Skipping job due to missing dataset_name")
         return None  # Skip if dataset_name is not available
@@ -85,15 +96,6 @@ def process_job(job, dataset_mapping, existing_image_paths, bucket_id):
     if not task_creation_time:
         print("Skipping job due to missing task_creation_time")
         return None  # Skip if task_creation_time is not available
-
-    image_path = job.get("file_path")
-    if not image_path:
-        print("Skipping job due to missing image_path")
-        return None  # Skip if image_path is not available
-
-    if image_path in existing_image_paths:
-        print(f"Skipping job with image_path {image_path} as it has already been processed")
-        return None  # Skip if image_path already exists
 
     try:
         # Generate UUID
