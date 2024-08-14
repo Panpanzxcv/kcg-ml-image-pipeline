@@ -91,7 +91,7 @@ def add_image_pair(request: Request, job_uuid_1: str = Query(...), job_uuid_2: s
         job_details_2 = extract_job_details(job_uuid_2, "2")
 
 
-    rank = request.app.rank_model_models_collection.find_one(
+    rank = request.app.rank_collection.find_one(
         {"rank_model_id": rank_model_id}
     )
 
@@ -354,7 +354,7 @@ async def random_queue_pair(request: Request, rank_model_id: Optional[int] = Non
         # Fetch classifier_id from rank_model_id
         classifier_id = None
         if rank_model_id is not None:
-            rank = request.app.rank_model_models_collection.find_one({'rank_model_id': rank_model_id})
+            rank = request.app.rank_collection.find_one({'rank_model_id': rank_model_id})
             if rank:
                 classifier_id = rank.get("classifier_id")
 
@@ -406,7 +406,7 @@ async def add_datapoints(request: Request, selection: RankSelection, image_sourc
     api_handler = await ApiResponseHandlerV1.createInstance(request)
     
     try:
-        rank = request.app.rank_model_models_collection.find_one(
+        rank = request.app.rank_collection.find_one(
             {"rank_model_id": selection.rank_model_id}
         )
 
@@ -509,7 +509,7 @@ async def add_datapoints_v1(request: Request, selection: RankSelectionV1):
                 http_status_code=422
             )
         
-        rank = request.app.rank_model_models_collection.find_one(
+        rank = request.app.rank_collection.find_one(
             {"rank_model_id": selection.rank_model_id}
         )
 
@@ -908,7 +908,7 @@ def add_irrelevant_image(request: Request, job_uuid: str = Query(...), rank_mode
             http_status_code=404
         )
 
-    rank = request.app.rank_model_models_collection.find_one({"rank_model_id": rank_model_id})
+    rank = request.app.rank_collection.find_one({"rank_model_id": rank_model_id})
     if not rank:
         return api_response_handler.create_error_response_v1(
             error_code=ErrorCode.ELEMENT_NOT_FOUND,
@@ -993,7 +993,7 @@ def add_irrelevant_image_v1(
             http_status_code=404
         )
 
-    rank = request.app.rank_model_models_collection.find_one({"rank_model_id": rank_model_id})
+    rank = request.app.rank_collection.find_one({"rank_model_id": rank_model_id})
     if not rank:
         return api_response_handler.create_error_response_v1(
             error_code=ErrorCode.ELEMENT_NOT_FOUND,
@@ -1315,7 +1315,7 @@ def get_random_image_date_range(
     classifier_id = None
     uuids = []
     if rank_id is not None:
-        rank = request.app.rank_model_models_collection.find_one({'rank_model_id': rank_id})
+        rank = request.app.rank_collection.find_one({'rank_model_id': rank_id})
         if rank is None:
             return api_response_handler.create_error_response_v1(
                 error_code=ErrorCode.ELEMENT_NOT_FOUND,

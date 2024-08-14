@@ -38,7 +38,7 @@ async def create_ranking_model(request: Request, ranking_model_data: RequestRank
         # Verify rank_id exists in rank_models_collection
         rank_id = ranking_model_data.rank_id
 
-        if not request.app.rank_model_models_collection.find_one({"rank_model_id": rank_id}):
+        if not request.app.rank_collection.find_one({"rank_model_id": rank_id}):
             return response_handler.create_error_response_v1(
                 error_code=ErrorCode.INVALID_PARAMS, 
                 error_string=f"Rank ID {rank_id} not found in tag definitions.",

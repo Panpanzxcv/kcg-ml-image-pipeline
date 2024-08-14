@@ -57,15 +57,15 @@ async def set_image_rank_score(
 ):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
 
-    # Check if rank_id exists in rank_model_models_collection
-    model_exists = request.app.rank_model_models_collection.find_one(
+    # Check if rank_id exists in rank_collection
+    model_exists = request.app.rank_collection.find_one(
         {"rank_model_id": ranking_score.rank_id},
         {"_id": 1}
     )
     if not model_exists:
         return api_response_handler.create_error_response_v1(
             error_code=ErrorCode.INVALID_PARAMS,
-            error_string="The provided rank_model_id does not exist in rank_model_models_collection.",
+            error_string="The provided rank_model_id does not exist in rank_collection.",
             http_status_code=400
         )
 

@@ -243,8 +243,7 @@ def startup_db_client():
     app.extract_datasets_collection = app.mongodb_db["extract-datasets"]
 
     # ab ranking
-    app.rank_model_models_collection = app.mongodb_db["rank_definitions"]
-    app.rank_collection = app.mongodb_db["rank_collection"]
+    app.rank_collection = app.mongodb_db["rank_definitions"]
     app.rank_model_categories_collection = app.mongodb_db["rank_categories"]
 
 
