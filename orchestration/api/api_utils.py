@@ -688,7 +688,7 @@ def determine_bucket_id(file_path):
     elif "external" in file_path:
         return 2
     else:
-        return 0  
+        raise ValueError(f"Unknown bucket ID for file_path: {file_path}")
 
 
 def generate_uuid(task_creation_time):
@@ -722,19 +722,18 @@ def datetime_to_unix_int32(dt_str):
     unix_time = int(time.mktime(dt.timetuple()))
     return unix_time & 0xFFFFFFFF
 
-def insert_into_all_images(image_data, dataset_id, all_images_collection):
+def insert_into_all_images(image_data, uuid, dataset_id, all_images_collection):
     try:
         # Determine the bucket ID based on the file_path
         bucket_id = determine_bucket_id(image_data.get("file_path"))
 
         # Generate UUID and Unix timestamp
         task_creation_time = image_data.get("upload_date", str(datetime.now()))
-        uuid_value = generate_uuid(task_creation_time)
         date_int32 = datetime_to_unix_int32(task_creation_time)
 
         # Create the document to be inserted
         new_document = {
-            "uuid": uuid_value,
+            "uuid": uuid,
             "index": -1,  # Not used but included as per requirement
             "bucket_id": bucket_id,
             "dataset_id": dataset_id,
@@ -749,7 +748,7 @@ def insert_into_all_images(image_data, dataset_id, all_images_collection):
     except Exception as e:
         print(f"Error inserting into all-images collection: {e}")
 
-def insert_into_all_images_for_completed(image_data, dataset_id, all_images_collection):
+def insert_into_all_images_for_completed(image_data, uuid, dataset_id, all_images_collection):
     try:
         # Determine the bucket ID based on the output file path
         file_path = image_data.get("task_output_file_dict", {}).get("output_file_path")
@@ -757,16 +756,15 @@ def insert_into_all_images_for_completed(image_data, dataset_id, all_images_coll
             print("No file path found in task_output_file_dict")
             return
         
-        bucket_id = determine_bucket_id(file_path)
+        bucket_id = 0
 
         # Generate UUID and Unix timestamp
         task_creation_time = image_data.get("task_creation_time", str(datetime.now()))
-        uuid_value = generate_uuid(task_creation_time)
         date_int32 = datetime_to_unix_int32(task_creation_time)
 
         # Create the document to be inserted
         new_document = {
-            "uuid": uuid_value,
+            "uuid": uuid,
             "index": -1,  # Not used but included as per requirement
             "bucket_id": bucket_id,
             "dataset_id": dataset_id,
