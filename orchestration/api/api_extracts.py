@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Request,  Query, HTTPException, status
 from orchestration.api.mongo_schema.extracts_schemas import ExtractsHelpers
 from utility.path import separate_bucket_and_file_path
-from .mongo_schemas import AffectedCountResponse, ExtractImageData, ListExtractImageData, Dataset, ListExtractImageDataV1, ListDataset , ListExtractImageDataWithScore, ExtractImageDataV1
+from .mongo_schemas import AffectedCountResponse, ExtractImageData, ListExtractImageData, Dataset, ListExtractImageDataV1, ListDataset , ListExtractImageDataWithScore, ExtractImageDataV1, ResponseExtractData
 from pymongo import ReturnDocument, UpdateOne
 from .api_utils import ApiResponseHandlerV1, StandardSuccessResponseV1, ErrorCode, WasPresentResponse, TagCountResponse, get_minio_file_path, get_next_external_dataset_seq_id, update_external_dataset_seq_id, validate_date_format, TagListForImages, TagListForImagesV1,PrettyJSONResponse, insert_into_all_images, generate_uuid
 from orchestration.api.mongo_schema.tag_schemas import ListExternalImageTag, ImageTag
@@ -221,7 +221,7 @@ async def tmp_update_uuid(request: Request, batch_size: int = Query(..., descrip
 @router.post("/extracts/add-extracted-image-v1", 
             description="Add an extracted image data",
             tags=["extracts"],  
-            response_model=StandardSuccessResponseV1[ExtractImageDataV1],  
+            response_model=StandardSuccessResponseV1[ResponseExtractData],  
             responses=ApiResponseHandlerV1.listErrors([404,422, 500]))
 async def add_extract(request: Request, image_data: ExtractImageDataV1):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
@@ -275,42 +275,6 @@ async def add_extract(request: Request, image_data: ExtractImageDataV1):
         ExtractsHelpers.clean_extract_for_api_response(image_data_dict)
         return api_response_handler.create_success_response_v1(
             response_data=image_data_dict,
-            http_status_code=200  
-        )
-    
-    except Exception as e:
-        return api_response_handler.create_error_response_v1(
-            error_code=ErrorCode.OTHER_ERROR, 
-            error_string=str(e),
-            http_status_code=500
-        )
-
-   
-    
-
-@router.delete("/extracts/remove-extracted-image-by-hash", 
-            description="Remove an extracted image by its hash",
-            tags=["extracts"],  
-            response_model=StandardSuccessResponseV1[WasPresentResponse],  
-            responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
-async def remove_extracted_image_by_hash(request: Request, image_hash: str):
-    api_response_handler = await ApiResponseHandlerV1.createInstance(request)
-    
-    try:
-        # Check if the image exists in the extracts collection
-        existed = request.app.extracts_collection.find_one({"image_hash": image_hash})
-        if existed is None:
-            return api_response_handler.create_success_delete_response_v1(
-                False,
-                http_status_code=200
-            )
-        
-        # Remove the image from the extracts collection
-        request.app.extracts_collection.delete_one({"image_hash": image_hash})
-        
-
-        return api_response_handler.create_success_delete_response_v1(
-            True,
             http_status_code=200  
         )
     

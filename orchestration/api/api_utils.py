@@ -719,7 +719,7 @@ def datetime_to_unix_int32(dt_str):
     else:
         raise ValueError(f"time data '{dt_str}' does not match any known format")
     
-    unix_time = int(time.mktime(dt.timetuple()))
+    unix_time = int(dt.timestamp())
     return unix_time & 0xFFFFFFFF
 
 def insert_into_all_images(image_data, uuid, dataset_id, all_images_collection):

@@ -435,12 +435,26 @@ class ExtractImageDataV1(BaseModel):
             "extraction_policy": self.extraction_policy,
             "task_attributes_dict": self.task_attributes_dict,
         }    
+    
+class ResponseExtractData(BaseModel):
+    image_hash: str
+    dataset:str
+    source_image_uuid: str
+    source_image_hash: str
+    extraction_policy: str
+    task_attributes_dict: Union[dict, None] = None
+    uuid: str
+    old_uuid: str
+    upload_date: str
+    file_path: str
+    image_uuid: int
+
 
 class AffectedCountResponse(BaseModel):
     affected_entries: int
 
 class ListExtractImageData(BaseModel):
-    data: List[ExtractImageData] 
+    data: List[ResponseExtractData]  
 
 class ListExtractImageDataV1(BaseModel):
     images: List[ExtractImageData]     
