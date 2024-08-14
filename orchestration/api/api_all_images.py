@@ -123,7 +123,7 @@ async def list_all_images(
 @router.get("/all-images/get-image-by-hash", 
             description="Retrieve an image from all-images collection by its hash",
             tags=["all-images"],  
-            response_model=StandardSuccessResponseV1[ListAllImagesResponse],  
+            response_model=StandardSuccessResponseV1[AllImagesResponse],  
             responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
 async def get_image_by_hash(request: Request, image_hash: str):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)

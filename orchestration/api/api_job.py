@@ -17,7 +17,7 @@ import json
 import paramiko
 from typing import Optional, Dict
 import csv
-from .api_utils import ApiResponseHandler, ErrorCode, StandardSuccessResponse, AddJob, WasPresentResponse, ApiResponseHandlerV1, StandardSuccessResponseV1, CountLastHour, CountResponse, insert_into_all_images_for_completed, PrettyJSONResponse, DoneResponse
+from .api_utils import ApiResponseHandler, ErrorCode, StandardSuccessResponse, AddJob, WasPresentResponse, ApiResponseHandlerV1, StandardSuccessResponseV1, CountLastHour, CountResponse, insert_into_all_images_for_completed, PrettyJSONResponse, DoneResponse, generate_uuid
 from bson import ObjectId
 import time
 
@@ -521,16 +521,23 @@ def update_job_completed(request: Request, task: Task):
     dataset_name = job.get("task_input_dict", {}).get("dataset")
 
     # Find the dataset in the collection
-    dataset_result = request.app.datasets_collection.find_one({"dataset_name": dataset_name, "bucket_id": 1})
+    dataset_result = request.app.datasets_collection.find_one({"dataset_name": dataset_name, "bucket_id": 0})
 
     dataset_id = dataset_result.get("dataset_id")
+
+    # Generate UUID for image
+    task_creation_time = job.get("task_creation_time", str(datetime.now()))
+    image_uuid = generate_uuid(task_creation_time)
+
+    # Update job document with image_uuid
+    job["image_uuid"] = image_uuid
     
     # add to completed
     request.app.completed_jobs_collection.insert_one(task.to_dict())
 
     # Insert into all-images collection
     all_images_collection = request.app.all_image_collection
-    insert_into_all_images_for_completed(job, dataset_id, all_images_collection)
+    insert_into_all_images_for_completed(job, image_uuid, dataset_id, all_images_collection)
 
     # remove from in progress
     request.app.in_progress_jobs_collection.delete_one({"uuid": task.uuid})
@@ -1639,13 +1646,19 @@ async def update_job_completed(request: Request, uuid: str):
 
         dataset_id = dataset_result.get("dataset_id")
 
+        # Generate UUID for image
+        task_creation_time = job.get("task_creation_time", str(datetime.now()))
+        image_uuid = generate_uuid(task_creation_time)
 
-        # Move the job to the completed jobs collection
+        # Update job document with image_uuid
+        job["image_uuid"] = image_uuid
+
+        # Move the job to the completed jobs collection with the new image_uuid
         request.app.completed_jobs_collection.insert_one(job)
 
         # Insert into all-images collection
         all_images_collection = request.app.all_image_collection
-        insert_into_all_images_for_completed(job, dataset_id, all_images_collection)
+        insert_into_all_images_for_completed(job, image_uuid, dataset_id, all_images_collection)
 
         # Remove the job from the in-progress collection
         request.app.in_progress_jobs_collection.delete_one({"uuid": uuid})

@@ -7,10 +7,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # MongoDB connection details
 MONGO_URI = "mongodb://192.168.3.1:32017/"
 DATABASE_NAME = "orchestration-job-db"
-COMPLETED_JOBS_COLLECTION = "external_images"
+COMPLETED_JOBS_COLLECTION = "extracts"
 DATASETS_COLLECTION = "datasets"
 ALL_IMAGES_COLLECTION = "all-images"
-BUCKET_ID = 2  # Hardcoded bucket ID
+BUCKET_ID = 1  # Hardcoded bucket ID
 BATCH_SIZE = 5000  # Number of documents to process in each batch
 
 # Function to generate UUID
@@ -72,6 +72,17 @@ def process_batch(batch):
 # Process a single job
 def process_job(job, dataset_mapping, existing_image_paths, bucket_id):
     dataset_name = job.get("dataset")
+
+    image_path = job.get("file_path")
+
+    if image_path in existing_image_paths:
+        print(f"Skipping job with image_path {image_path} as it has already been processed")
+        return None  # Skip if image_path already exists
+    
+    if not image_path:
+        print("Skipping job due to missing image_path")
+        return None  # Skip if image_path is not available
+    
     if not dataset_name:
         print("Skipping job due to missing dataset_name")
         return None  # Skip if dataset_name is not available
@@ -85,15 +96,6 @@ def process_job(job, dataset_mapping, existing_image_paths, bucket_id):
     if not task_creation_time:
         print("Skipping job due to missing task_creation_time")
         return None  # Skip if task_creation_time is not available
-
-    image_path = job.get("file_path")
-    if not image_path:
-        print("Skipping job due to missing image_path")
-        return None  # Skip if image_path is not available
-
-    if image_path in existing_image_paths:
-        print(f"Skipping job with image_path {image_path} as it has already been processed")
-        return None  # Skip if image_path already exists
 
     try:
         # Generate UUID
