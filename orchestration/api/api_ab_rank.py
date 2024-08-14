@@ -50,11 +50,11 @@ async def add_new_rank_model_model(request: Request, rank_model_data: RankReques
 
 
         # Generate new rank_model_id
-        last_entry = request.app.rank_model_models_collection.find_one({}, sort=[("rank_model_id", -1)])
+        last_entry = request.app.rank_collection.find_one({}, sort=[("rank_model_id", -1)])
         new_rank_model_id = last_entry["rank_model_id"] + 1 if last_entry and "rank_model_id" in last_entry else 0
 
         # Check if the rank model exists by rank_model_string
-        existing_rank = request.app.rank_model_models_collection.find_one({"rank_model_string": rank_model_data.rank_model_string})
+        existing_rank = request.app.rank_collection.find_one({"rank_model_string": rank_model_data.rank_model_string})
         if existing_rank:
             return response_handler.create_error_response_v1(
                 error_code=ErrorCode.INVALID_PARAMS,
@@ -76,8 +76,8 @@ async def add_new_rank_model_model(request: Request, rank_model_data: RankReques
         }
 
         # Insert new rank model into the collection
-        inserted_id = request.app.rank_model_models_collection.insert_one(new_rank).inserted_id
-        new_rank = request.app.rank_model_models_collection.find_one({"_id": inserted_id})
+        inserted_id = request.app.rank_collection.insert_one(new_rank).inserted_id
+        new_rank = request.app.rank_collection.find_one({"_id": inserted_id})
 
         new_rank = {k: str(v) if isinstance(v, ObjectId) else v for k, v in new_rank.items()}
 
@@ -108,7 +108,7 @@ async def update_rank_model_model(request: Request, rank_model_id: int, update_d
     response_handler = await ApiResponseHandlerV1.createInstance(request)
 
     query = {"rank_model_id": rank_model_id}
-    existing_rank = request.app.rank_model_models_collection.find_one(query)
+    existing_rank = request.app.rank_collection.find_one(query)
 
     if not existing_rank:
         return response_handler.create_error_response_v1(
@@ -137,9 +137,9 @@ async def update_rank_model_model(request: Request, rank_model_id: int, update_d
                 http_status_code=400
             )
 
-    request.app.rank_model_models_collection.update_one(query, {"$set": update_fields})
+    request.app.rank_collection.update_one(query, {"$set": update_fields})
 
-    updated_rank = request.app.rank_model_models_collection.find_one(query)
+    updated_rank = request.app.rank_collection.find_one(query)
     updated_rank = {k: str(v) if isinstance(v, ObjectId) else v for k, v in updated_rank.items()}
 
     return response_handler.create_success_response_v1(
@@ -218,7 +218,7 @@ def remove_rank(request: Request, rank_model_id: int ):
 
     # Check if the rank exists
     rank_model_query = {"rank_model_id": rank_model_id}
-    rank = request.app.rank_model_models_collection.find_one(rank_model_query)
+    rank = request.app.rank_collection.find_one(rank_model_query)
     
     if rank is None:
         # Return standard response with wasPresent: false
@@ -228,7 +228,7 @@ def remove_rank(request: Request, rank_model_id: int ):
                                                            )
 
     # Remove the rank
-    request.app.rank_model_models_collection.delete_one(rank_model_query)
+    request.app.rank_collection.delete_one(rank_model_query)
 
     # Return standard response with wasPresent: true
     return response_handler.create_success_delete_response_v1(
@@ -246,7 +246,7 @@ def remove_rank(request: Request, rank_model_id: int ):
 def list_rank_model_models(request: Request):
     response_handler = ApiResponseHandlerV1(request)
     try:
-        ranks_cursor = request.app.rank_model_models_collection.find({})
+        ranks_cursor = request.app.rank_collection.find({})
 
         # Prepare the response list
         response_ranks = []
@@ -429,7 +429,7 @@ def delete_rank_model_category(request: Request, rank_model_category_id: int):
 
     # Check if the rank category is used in any ranks
     rank_model_query = {"rank_model_category_id": rank_model_category_id}
-    rank_model_with_category = request.app.rank_model_models_collection.find_one(rank_model_query)
+    rank_model_with_category = request.app.rank_collection.find_one(rank_model_query)
 
     if rank_model_with_category is not None:
         # Since it's used in ranks, do not delete but notify the client
@@ -461,7 +461,7 @@ def update_rank_model_deprecated_status(request: Request, rank_model_id: int, de
     response_handler = ApiResponseHandlerV1(request)
 
     query = {"rank_model_id": rank_model_id}
-    existing_rank = request.app.rank_model_models_collection.find_one(query)
+    existing_rank = request.app.rank_collection.find_one(query)
 
     if existing_rank is None:
         return response_handler.create_error_response_v1(
@@ -479,10 +479,10 @@ def update_rank_model_deprecated_status(request: Request, rank_model_id: int, de
         )
 
     # Update the 'deprecated' status of the rank
-    request.app.rank_model_models_collection.update_one(query, {"$set": {"deprecated": deprecated}})
+    request.app.rank_collection.update_one(query, {"$set": {"deprecated": deprecated}})
 
     # Retrieve the updated rank to confirm the change
-    updated_rank = request.app.rank_model_models_collection.find_one(query)
+    updated_rank = request.app.rank_collection.find_one(query)
 
     # Serialize ObjectId to string if necessary and prepare the response
     updated_rank = {k: str(v) if isinstance(v, ObjectId) else v for k, v in updated_rank.items()}
@@ -571,7 +571,7 @@ async def get_ab_rank_image_pair_v1(
                     http_status_code=400
                 )
 
-        rank_model = request.app.rank_model_models_collection.find_one({'rank_model_id': rank_model_id})
+        rank_model = request.app.rank_collection.find_one({'rank_model_id': rank_model_id})
         if rank_model is None:
             return response_handler.create_error_response_v1(
                 error_code=ErrorCode.ELEMENT_NOT_FOUND,
@@ -683,7 +683,7 @@ async def get_ab_rank_image_pair_v1(
 async def get_ab_rank_image_pair(request: Request, rank_model_id:int, min_score:float, max_diff:float, sample_size:int=1000):
     response_handler = await ApiResponseHandlerV1.createInstance(request)
     try:
-        rank_model = request.app.rank_model_models_collection.find_one({'rank_model_id': rank_model_id})
+        rank_model = request.app.rank_collection.find_one({'rank_model_id': rank_model_id})
         if rank_model is None:
             return response_handler.create_error_response_v1(
                 error_code=ErrorCode.ELEMENT_NOT_FOUND,
@@ -814,7 +814,7 @@ async def get_ab_rank_image_pair(request: Request, rank_model_id: int, min_score
     response_handler = await ApiResponseHandlerV1.createInstance(request)
     try:
         # Fetch the rank model
-        rank_model = request.app.rank_model_models_collection.find_one({'rank_model_id': rank_model_id})
+        rank_model = request.app.rank_collection.find_one({'rank_model_id': rank_model_id})
         if rank_model is None:
             return response_handler.create_error_response_v1(
                 error_code=ErrorCode.ELEMENT_NOT_FOUND,
