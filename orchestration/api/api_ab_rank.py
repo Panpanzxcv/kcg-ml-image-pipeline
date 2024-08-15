@@ -911,28 +911,3 @@ async def get_ab_rank_image_pair(request: Request, rank_model_id: int, min_score
             error_string=f'Failed to get image pair for ab rank: {e}',
             http_status_code=500
         )
-
-
-@router.delete("/ab-rank/remove-all-rank-models", 
-               status_code=200,
-               tags=["ab-rank"],
-               description="Removes all rank models from the rank collection",
-               response_model=StandardSuccessResponseV1,
-               responses=ApiResponseHandlerV1.listErrors([500]))
-async def remove_all_rank_models(request: Request):
-    response_handler = await ApiResponseHandlerV1.createInstance(request)
-    try:
-        # Remove all documents from the rank collection
-        delete_result = request.app.rank_collection.delete_many({})
-        
-        return response_handler.create_success_response_v1(
-            response_data={"Done": True, "deleted_count": delete_result.deleted_count},
-            http_status_code=200
-        )
-    
-    except Exception as e:
-        return response_handler.create_error_response_v1(
-            error_code=ErrorCode.OTHER_ERROR,
-            error_string=str(e),
-            http_status_code=500
-        )
