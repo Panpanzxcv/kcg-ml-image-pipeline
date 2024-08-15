@@ -216,6 +216,9 @@ def main():
         minio_ip_addr=args.minio_addr
     )
 
+    # set number of gpus
+    world_size = torch.cuda.device_count()
+
     print(f"Load all rank models")
     rank_model_list = request.http_get_ranking_model_list()
     rank_models = {}
@@ -241,7 +244,6 @@ def main():
         dataset_loader = ImageDatasetLoader(minio_client, bucket_name, dataset_name)
         image_dataset = dataset_loader.load_dataset()
 
-        world_size = torch.cuda.device_count()
         mp.spawn(calculate_and_upload_scores, args=(world_size, image_dataset, image_source, rank_models, batch_size), nprocs=world_size, join=True)
     else:
         dataset_names = get_dataset_list(bucket_name)
