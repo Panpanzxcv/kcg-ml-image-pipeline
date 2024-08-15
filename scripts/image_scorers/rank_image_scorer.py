@@ -222,7 +222,7 @@ def main():
     for rank_info in rank_model_list:
         ranking_model_type = rank_info["model_type"]
 
-        if model_type != ranking_model_type:
+        if model_type != ranking_model_type and model_type!="all":
             continue
 
         rank_id = rank_info["rank_id"]
