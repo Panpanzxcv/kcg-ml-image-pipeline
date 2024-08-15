@@ -27,6 +27,8 @@ def parse_arguments():
 
 if __name__=="__main__":
 
+    print("testing")
+
     args = parse_arguments()
     
     image_types = {
@@ -35,6 +37,8 @@ if __name__=="__main__":
     }
 
     tags = http_get_tag_list()
+
+    print(tags)
     
     if args.tag_name != "all":
         try:
