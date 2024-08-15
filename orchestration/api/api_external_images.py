@@ -25,7 +25,7 @@ external_image = "external_image"
             description="Add an external image data with a randomly generated UUID by uuid4",
             tags=["external-images"],  
             response_model=StandardSuccessResponseV1[ExternalImageDataV1],  
-            responses=ApiResponseHandlerV1.listErrors([404,422, 500])) 
+            responses=ApiResponseHandlerV1.listErrors([404, 422, 500])) 
 async def add_external_image_data(request: Request, image_data: ExternalImageData):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
     try:
@@ -68,24 +68,22 @@ async def add_external_image_data(request: Request, image_data: ExternalImageDat
         image_data_dict['uuid'] = str(uuid.uuid4())
         image_data_dict['upload_date'] = str(datetime.now())
 
-        # Generate the image_uuid
-        task_creation_time = image_data_dict.get("upload_date", str(datetime.now()))
-        image_uuid = generate_uuid(task_creation_time)
-        image_data_dict['image_uuid'] = image_uuid
-
         # Set MinIO path using sequential ID
         next_seq_id = get_next_external_dataset_seq_id(request, bucket="external", dataset=image_data.dataset)
         image_data_dict['file_path'] = get_minio_file_path(next_seq_id,
                                                 "external",            
                                                 image_data.dataset, 
                                                 image_data.image_format)
-        
-        # Insert the new image data into the external images collection
-        request.app.external_images_collection.insert_one(image_data_dict)
 
-        # Insert into the all-images collection
+        # Insert into the all-images collection and retrieve the image_uuid
         all_images_collection = request.app.all_image_collection
-        insert_into_all_images(image_data_dict, image_uuid, dataset_id, all_images_collection)
+        image_uuid = insert_into_all_images(image_data_dict, dataset_id, all_images_collection)
+
+        # Add the image_uuid to the image_data_dict and insert into the external images collection
+        if image_uuid:
+            image_data_dict['image_uuid'] = image_uuid
+
+        request.app.external_images_collection.insert_one(image_data_dict)
 
         image_data_dict.pop('_id', None)
 
@@ -119,7 +117,6 @@ async def add_external_image_data_list(request: Request, image_data_list: List[E
         for image_data in image_data_list:
             # Check if the dataset exists
             dataset_result = request.app.datasets_collection.find_one({"dataset_name": image_data.dataset,"bucket_id": 2 })
-            
             if not dataset_result:
                 return api_response_handler.create_error_response_v1(
                     error_code=ErrorCode.ELEMENT_NOT_FOUND, 
@@ -146,11 +143,6 @@ async def add_external_image_data_list(request: Request, image_data_list: List[E
                 image_data_dict['uuid'] = str(uuid.uuid4())
                 image_data_dict['upload_date'] = str(datetime.now())
 
-                # Generate the image_uuid
-                task_creation_time = image_data_dict.get("upload_date", str(datetime.now()))
-                image_uuid = generate_uuid(task_creation_time)
-                image_data_dict['image_uuid'] = image_uuid
-
                 # Set MinIO path using sequential ID
                 next_seq_id = get_next_external_dataset_seq_id(request, bucket="external", dataset=image_data.dataset)
                 image_data_dict['file_path'] = get_minio_file_path(next_seq_id, 
@@ -158,12 +150,15 @@ async def add_external_image_data_list(request: Request, image_data_list: List[E
                                                         image_data.dataset, 
                                                         image_data.image_format)
                 
-                # Insert the new image data into the collection
-                request.app.external_images_collection.insert_one(image_data_dict)
-
-                # Insert into all-images collection
+                # Insert into the all-images collection and retrieve the image_uuid
                 all_images_collection = request.app.all_image_collection
-                insert_into_all_images(image_data_dict, image_uuid, dataset_id, all_images_collection)
+                image_uuid = insert_into_all_images(image_data_dict, dataset_id, all_images_collection)
+
+                # Add the image_uuid to the image_data_dict and insert into the external images collection
+                if image_uuid:
+                    image_data_dict['image_uuid'] = image_uuid
+
+                request.app.external_images_collection.insert_one(image_data_dict)
 
                 # Update sequential ID
                 loop = asyncio.get_event_loop()
@@ -171,7 +166,7 @@ async def add_external_image_data_list(request: Request, image_data_list: List[E
                                                     update_external_dataset_seq_id, 
                                                     request, "external", image_data.dataset, next_seq_id)
 
-                # Add updated image_data into updated_image_data_list
+                # Add the updated image_data_dict to the updated_image_data_list
                 updated_image_data_list.append(image_data_dict)
 
         # Remove the _id field from the response data
@@ -1477,7 +1472,7 @@ def get_random_image_date_range(
     # If rank_id is provided, adjust the query to consider classifier scores
     if rank_id is not None:
         # Get rank data
-        rank = request.app.rank_model_models_collection.find_one({'rank_model_id': rank_id})
+        rank = request.app.rank_collection.find_one({'rank_model_id': rank_id})
         if rank is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

@@ -112,13 +112,13 @@ async def remove_current_data_batch_sequential_id(request: Request, dataset: str
             description="changed with /extracts/add-extracted-image-v1 ",
             tags=["deprecated3"],  
             response_model=StandardSuccessResponseV1[ListExtractImageData],  
-            responses=ApiResponseHandlerV1.listErrors([404,422, 500]))
+            responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
 async def add_extract(request: Request, image_data: ExtractImageData):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
 
     try:
         # Check if the dataset exists
-        dataset_result = request.app.datasets_collection.find_one({"dataset_name": image_data.dataset, "bucket_id": 1 })
+        dataset_result = request.app.datasets_collection.find_one({"dataset_name": image_data.dataset, "bucket_id": 1})
         if not dataset_result:
             return api_response_handler.create_error_response_v1(
                 error_code=ErrorCode.ELEMENT_NOT_FOUND, 
@@ -128,12 +128,11 @@ async def add_extract(request: Request, image_data: ExtractImageData):
         
         dataset_id = dataset_result["dataset_id"]
 
-        # Generate UUID for image
+        # Generate UUID for image data
         image_data.uuid = str(uuid.uuid4())
 
         # Check if the image already exists
         existed = request.app.extracts_collection.find_one({"image_hash": image_data.image_hash})
-
         if existed is None:
             # Insert into extracts collection
             image_data.upload_date = str(datetime.now())
@@ -146,16 +145,16 @@ async def add_extract(request: Request, image_data: ExtractImageData):
             data_to_save['old_uuid_string'] = image_data.uuid
             data_to_save['uuid'] = uuid.UUID(image_data.uuid)
 
-            # Generate and add the image_uuid
-            task_creation_time = data_to_save.get("upload_date", str(datetime.now()))
-            image_uuid = generate_uuid(task_creation_time)
-            data_to_save['image_uuid'] = image_uuid
-
-            request.app.extracts_collection.insert_one(data_to_save)
-
-            # Insert into all-images collection
+            # Insert into all-images collection, generating the image_uuid within the function
             all_images_collection = request.app.all_image_collection
-            insert_into_all_images(data_to_save, image_uuid, dataset_id, all_images_collection)
+            image_uuid = insert_into_all_images(data_to_save, dataset_id, all_images_collection)
+
+            # Update the image data with the new image_uuid
+            if image_uuid:
+                data_to_save['image_uuid'] = image_uuid
+
+            # Insert the image data into the extracts collection
+            request.app.extracts_collection.insert_one(data_to_save)
 
         else:
             return api_response_handler.create_error_response_v1(
@@ -179,6 +178,9 @@ async def add_extract(request: Request, image_data: ExtractImageData):
             error_string=str(e),
             http_status_code=500
         )
+
+
+
 
 
 @router.put("/extracts/update-uuid-datatype",
@@ -222,7 +224,7 @@ async def tmp_update_uuid(request: Request, batch_size: int = Query(..., descrip
             description="Add an extracted image data",
             tags=["extracts"],  
             response_model=StandardSuccessResponseV1[ResponseExtractData],  
-            responses=ApiResponseHandlerV1.listErrors([404,422, 500]))
+            responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
 async def add_extract(request: Request, image_data: ExtractImageDataV1):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
     
@@ -250,16 +252,15 @@ async def add_extract(request: Request, image_data: ExtractImageDataV1):
             next_seq_id = get_next_external_dataset_seq_id(request, bucket="extracts", dataset=image_data.dataset)
             image_data_dict['file_path'] = get_minio_file_path(next_seq_id, "extracts", image_data.dataset, 'jpg')
 
-            # Generate UUID for image
-            task_creation_time = image_data_dict.get("upload_date", str(datetime.now()))
-            image_uuid = generate_uuid(task_creation_time)
+            # Insert into all-images collection and get the image_uuid
+            all_images_collection = request.app.all_image_collection
+            image_uuid = insert_into_all_images(image_data_dict, dataset_id, all_images_collection)
+
+            # Add the image_uuid to the image_data_dict
             image_data_dict['image_uuid'] = image_uuid
 
+            # Insert the image data into the extracts collection
             request.app.extracts_collection.insert_one(image_data_dict)
-
-            # Insert into all-images collection
-            all_images_collection = request.app.all_image_collection
-            insert_into_all_images(image_data_dict, image_uuid, dataset_id, all_images_collection)
 
         else:
             return api_response_handler.create_error_response_v1(
@@ -1229,7 +1230,7 @@ def get_random_image_date_range(
     # If rank_id is provided, adjust the query to consider classifier scores
     if rank_id is not None:
         # Get rank data
-        rank = request.app.rank_model_models_collection.find_one({'rank_model_id': rank_id})
+        rank = request.app.rank_collection.find_one({'rank_model_id': rank_id})
         if rank is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

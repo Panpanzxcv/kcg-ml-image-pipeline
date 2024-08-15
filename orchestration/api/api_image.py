@@ -241,7 +241,7 @@ def get_random_image_date_range(
     # If rank_id is provided, adjust the query to consider classifier scores
     if rank_id is not None:
         # get rank data
-        rank = request.app.rank_model_models_collection.find_one({'rank_model_id': rank_id})
+        rank = request.app.rank_collection.find_one({'rank_model_id': rank_id})
         if rank is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

@@ -510,9 +510,11 @@ def update_completed_jobs_with_better_name(request: Request, task_type_mapping: 
     return total_count_updated
 
 
-@router.put("/queue/image-generation/update-completed", tags = ['deprecated3'], description= "changed with /queue/image-generation/set-in-progress-job-as-completed")
+@router.put("/queue/image-generation/update-completed", 
+            tags=['deprecated3'], 
+            description="changed with /queue/image-generation/set-in-progress-job-as-completed")
 def update_job_completed(request: Request, task: Task):
-    # check if exist
+    # Check if the job exists in the in-progress collection
     job = request.app.in_progress_jobs_collection.find_one({"uuid": task.uuid})
     if job is None:
         return False
@@ -522,27 +524,28 @@ def update_job_completed(request: Request, task: Task):
 
     # Find the dataset in the collection
     dataset_result = request.app.datasets_collection.find_one({"dataset_name": dataset_name, "bucket_id": 0})
+    if not dataset_result:
+        return False  # Handle missing dataset scenario
 
     dataset_id = dataset_result.get("dataset_id")
 
-    # Generate UUID for image
-    task_creation_time = job.get("task_creation_time", str(datetime.now()))
-    image_uuid = generate_uuid(task_creation_time)
-
-    # Update job document with image_uuid
-    job["image_uuid"] = image_uuid
-    
-    # add to completed
-    request.app.completed_jobs_collection.insert_one(task.to_dict())
-
-    # Insert into all-images collection
+    # Insert the job details into the all-images collection and get the generated image_uuid
     all_images_collection = request.app.all_image_collection
-    insert_into_all_images_for_completed(job, image_uuid, dataset_id, all_images_collection)
+    image_uuid = insert_into_all_images_for_completed(job, dataset_id, all_images_collection)
 
-    # remove from in progress
+    # Update the task object with the new image_uuid
+    task_dict = task.to_dict()
+    if image_uuid:
+        task_dict["image_uuid"] = image_uuid
+
+    # Add the updated task to the completed_jobs_collection
+    request.app.completed_jobs_collection.insert_one(task_dict)
+
+    # Remove the job from the in-progress collection
     request.app.in_progress_jobs_collection.delete_one({"uuid": task.uuid})
 
     return True
+
 
 
 @router.put("/queue/image-generation/update-failed",tags = ['deprecated3'], description= "changed with /queue/image-generation/set-in-progress-job-as-failed")
@@ -1642,23 +1645,26 @@ async def update_job_completed(request: Request, uuid: str):
         dataset_name = job.get("task_input_dict", {}).get("dataset")
 
         # Find the dataset in the collection
-        dataset_result = request.app.datasets_collection.find_one({"dataset_name": dataset_name, "bucket_id": 1})
+        dataset_result = request.app.datasets_collection.find_one({"dataset_name": dataset_name, "bucket_id": 0})
+        if not dataset_result:
+            return response_handler.create_error_response_v1(
+                error_code=ErrorCode.ELEMENT_NOT_FOUND, 
+                error_string="Dataset not found",
+                http_status_code=404
+            )
 
         dataset_id = dataset_result.get("dataset_id")
 
-        # Generate UUID for image
-        task_creation_time = job.get("task_creation_time", str(datetime.now()))
-        image_uuid = generate_uuid(task_creation_time)
+        # Insert into all-images collection and get the generated image_uuid
+        all_images_collection = request.app.all_image_collection
+        image_uuid = insert_into_all_images_for_completed(job, dataset_id, all_images_collection)
 
         # Update job document with image_uuid
-        job["image_uuid"] = image_uuid
+        if image_uuid:
+            job["image_uuid"] = image_uuid
 
         # Move the job to the completed jobs collection with the new image_uuid
         request.app.completed_jobs_collection.insert_one(job)
-
-        # Insert into all-images collection
-        all_images_collection = request.app.all_image_collection
-        insert_into_all_images_for_completed(job, image_uuid, dataset_id, all_images_collection)
 
         # Remove the job from the in-progress collection
         request.app.in_progress_jobs_collection.delete_one({"uuid": uuid})
@@ -1673,6 +1679,7 @@ async def update_job_completed(request: Request, uuid: str):
             error_string=f"Failed to update job as completed: {str(e)}",
             http_status_code=500
         )
+
 
 
 @router.put("/queue/image-generation/set-in-progress-job-as-failed", 

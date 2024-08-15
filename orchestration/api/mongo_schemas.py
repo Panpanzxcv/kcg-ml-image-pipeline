@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, constr, validator, model_validator
+from pydantic import BaseModel, Field, constr, validator, model_validator, RootModel
 from typing import List, Union, Optional, Dict
 import json
 import re
@@ -551,6 +551,10 @@ class ListClassifierScore1(BaseModel):
 
 class ListClassifierScore2(BaseModel):
     scores: List[ClassifierScoreV1]
+
+class ListClassifierScore4(RootModel[List[ClassifierScoreV1]]):
+    pass
+
 
 class ListClassifierScore3(BaseModel):
     data: List[ClassifierScoreV1]
