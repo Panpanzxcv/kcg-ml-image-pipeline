@@ -91,7 +91,7 @@ def load_model(minio_client, classifier_model_info, device):
     print(f"Loading classifier model {classifier_name}...")
 
     if 'clip-h' not in classifier_name:
-        print(f"Not support for classifier model: {classifier_name}")
+        print(f"No support for classifier model: {classifier_name}")
         return None
 
     if "elm" in classifier_name:
@@ -225,9 +225,15 @@ def main():
         classifier_id = classifier_info["classifier_id"]
         classifier_name = classifier_info["classifier_name"]
         tag_id = classifier_info["tag_id"]
-        classifier_model= None
+        classifier_model = None
 
-        if model_type in classifier_name or model_type=="all":
+        if bucket_name == "external" and "all_resolutions" not in classifier_name:
+            continue
+
+        if (bucket_name == "extracts" or bucket_name == "datasets") and "all_resolutions" in classifier_name:
+            continue
+
+        if (model_type in classifier_name or model_type=="all"):
             classifier_model = load_model(minio_client, classifier_info, torch.device('cpu'))
 
         if classifier_model is not None:
