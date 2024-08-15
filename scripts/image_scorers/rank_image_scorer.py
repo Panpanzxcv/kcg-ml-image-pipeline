@@ -231,7 +231,7 @@ def main():
         rank_model= None
 
         print(f"Loading the ranking model for rank id: {rank_id}...")
-        rank_model = load_model(minio_client, rank_id, model_type, model_path, torch.device('cpu'))
+        rank_model = load_model(minio_client, rank_id, ranking_model_type, model_path, torch.device('cpu'))
 
         if rank_model is not None:
             rank_models[model_id] = { "model": rank_model, "rank_id": rank_id}
