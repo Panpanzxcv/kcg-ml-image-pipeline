@@ -118,10 +118,8 @@ class ImageExtractionPipeline:
             for rank_info in rank_model_list:
                 ranking_model_type = rank_info["model_type"]
                 rank_id = rank_info["rank_id"]
-                print(rank_id)
 
                 if  ranking_model_type != "elm-v1" or rank_id not in [0,1,3]:
-                    print(rank_id)
                     continue
 
                 rank_id = rank_info["rank_id"]
@@ -136,6 +134,7 @@ class ImageExtractionPipeline:
             tags= request.http_get_tag_list()
             tag_names= [tag['tag_string'] for tag in tags]
             classifier_model= None
+            target_tags=["game", "environmental", "perspective"]
 
             for tag in tag_names:
                 if tag.startswith("defect"):
@@ -146,7 +145,7 @@ class ImageExtractionPipeline:
                     classifier_model= self.get_classifier_model(tag)
                     if classifier_model:
                         self.irrelevant_image_models[tag] = classifier_model
-                elif tag.startswith("game"):
+                elif any(tag.startswith(prefix) for prefix in target_tags):
                     classifier_model= self.get_classifier_model(tag)
                     if classifier_model:
                         self.topic_models[tag]= classifier_model
