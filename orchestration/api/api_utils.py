@@ -781,3 +781,8 @@ def insert_into_all_images_for_completed(image_data, dataset_id, all_images_coll
     except Exception as e:
         print(f"Error inserting into all-images collection: {e}")
     
+
+def uuid64_number_to_string(uuid_number):
+    hex_string = uuid_number.to_bytes(8, 'big').hex()
+    return hex_string[0:4] + '-' + hex_string[4:8] + '-' + hex_string[8:12] + '-' + hex_string[12:16]
+
