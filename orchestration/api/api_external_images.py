@@ -407,21 +407,51 @@ async def delete_external_image_data(request: Request, image_hash: str):
                 http_status_code=422
             )
 
-        # Perform the deletion if no conditions are met
-        result = request.app.external_images_collection.delete_one({
-            "image_hash": image_hash
-        })
-        
+        # Fetch the image document to get the file path before deletion
+        image_document = request.app.external_images_collection.find_one({"image_hash": image_hash})
+        if not image_document:
+            return api_response_handler.create_success_delete_response_v1(
+                False, 
+                http_status_code=200
+            )
+
+        # Extract the file path
+        file_path = image_document.get("file_path")
+        if not file_path:
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS,
+                error_string="No valid file path found for the image.",
+                http_status_code=422
+            )
+
+        # Perform the deletion in MongoDB
+        result = request.app.external_images_collection.delete_one({"image_hash": image_hash})
+
         if result.deleted_count == 0:
             return api_response_handler.create_success_delete_response_v1(
                 False, 
                 http_status_code=200
             )
-        
+
+        # Correctly split the file path to get the bucket name and object name
+        path_parts = file_path.split("/", 1)
+        bucket_name = path_parts[0] if len(path_parts) > 0 else None
+        object_name = path_parts[1] if len(path_parts) > 1 else None
+
+        # Delete the related files from MinIO
+        if bucket_name and object_name:
+            cmd.remove_an_object(request.app.minio_client, bucket_name, object_name)
+            # Delete associated files with the same prefix (e.g., .jpg, .msgpack)
+            associated_files = [
+                f"{object_name.rsplit('.', 1)[0]}_clip_kandinsky.msgpack"
+            ]
+            for file in associated_files:
+                cmd.remove_an_object(request.app.minio_client, bucket_name, file)
+
         return api_response_handler.create_success_delete_response_v1(
-                True, 
-                http_status_code=200
-            )
+            True, 
+            http_status_code=200
+        )
     
     except Exception as e:
         return api_response_handler.create_error_response_v1(
@@ -431,10 +461,11 @@ async def delete_external_image_data(request: Request, image_hash: str):
         )
 
 
+
     
 
 @router.delete("/external-images/delete-external-image-list", 
-            description="Delete an external image data list if they are not used in a selection datapoint or have a tag assigned",
+            description="Delete a list of external image data if they are not used in a selection datapoint or have a tag assigned",
             tags=["external-images"],  
             response_model=StandardSuccessResponseV1[DeletedCount],  
             responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
@@ -471,12 +502,39 @@ async def delete_external_image_data_list(request: Request, image_hash_list: Lis
                     http_status_code=422
                 )
 
-            # Perform the deletion if no conditions are met
-            result = request.app.external_images_collection.delete_one({
-                "image_hash": image_hash
-            })
+            # Fetch the image document to get the file path before deletion
+            image_document = request.app.external_images_collection.find_one({"image_hash": image_hash})
+            if not image_document:
+                continue  # Skip this image if it doesn't exist
+
+            # Extract the file path
+            file_path = image_document.get("file_path")
+            if not file_path:
+                return api_response_handler.create_error_response_v1(
+                    error_code=ErrorCode.INVALID_PARAMS,
+                    error_string="No valid file path found for the image.",
+                    http_status_code=422
+                )
+
+            # Perform the deletion in MongoDB
+            result = request.app.external_images_collection.delete_one({"image_hash": image_hash})
 
             if result.deleted_count > 0:
+                # Correctly split the file path to get the bucket name and object name
+                path_parts = file_path.split("/", 1)
+                bucket_name = path_parts[0] if len(path_parts) > 0 else None
+                object_name = path_parts[1] if len(path_parts) > 1 else None
+
+                # Delete the related files from MinIO
+                if bucket_name and object_name:
+                    cmd.remove_an_object(request.app.minio_client, bucket_name, object_name)
+                    # Delete associated files with the same prefix (e.g., .jpg, .msgpack)
+                    associated_files = [
+                        f"{object_name.rsplit('.', 1)[0]}_clip_kandinsky.msgpack"
+                    ]
+                    for file in associated_files:
+                        cmd.remove_an_object(request.app.minio_client, bucket_name, file)
+                
                 deleted_count += 1
             
         return api_response_handler.create_success_response_v1(
@@ -490,6 +548,7 @@ async def delete_external_image_data_list(request: Request, image_hash_list: Lis
             error_string=str(e),
             http_status_code=500
         )
+
     
 
 @router.put("/external-images/add-task-attributes-v1",
