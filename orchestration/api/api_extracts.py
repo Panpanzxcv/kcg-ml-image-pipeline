@@ -15,6 +15,7 @@ import random
 from .api_clip import http_clip_server_get_cosine_similarity_list
 import time
 import os
+from utility.minio import cmd
 
 
 router = APIRouter()
@@ -389,17 +390,48 @@ async def delete_extract_image_data(request: Request, image_hash: str):
                 http_status_code=422
             )
 
-        # Perform the deletion if no conditions are met
-        result = request.app.extracts_collection.delete_one({
-            "image_hash": image_hash
-        })
+        # Fetch the image document to get the file path before deletion
+        image_document = request.app.extracts_collection.find_one({"image_hash": image_hash})
+        if not image_document:
+            return api_response_handler.create_success_delete_response_v1(
+                False, 
+                http_status_code=200
+            )
+
+        # Extract the file path
+        file_path = image_document.get("file_path")
+        if not file_path:
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS,
+                error_string="No valid file path found for the image.",
+                http_status_code=422
+            )
+
+        # Perform the deletion in MongoDB
+        result = request.app.extracts_collection.delete_one({"image_hash": image_hash})
 
         if result.deleted_count == 0:
             return api_response_handler.create_success_delete_response_v1(
                 False, 
                 http_status_code=200
             )
-        
+
+        # Correctly split the file path to get the bucket name and object name
+        path_parts = file_path.split("/", 1)
+        bucket_name = path_parts[0] if len(path_parts) > 0 else None
+        object_name = path_parts[1] if len(path_parts) > 1 else None
+
+        # Delete the related files from MinIO
+        if bucket_name and object_name:
+            cmd.remove_an_object(request.app.minio_client, bucket_name, object_name)
+            # Delete associated files with the same prefix (e.g., .jpg, .msgpack)
+            associated_files = [
+                f"{object_name.rsplit('.', 1)[0]}_clip_kandinsky.msgpack",
+                f"{object_name.rsplit('.', 1)[0]}_vae_latent.msgpack",
+            ]
+            for file in associated_files:
+                cmd.remove_an_object(request.app.minio_client, bucket_name, file)
+
         return api_response_handler.create_success_delete_response_v1(
             True, 
             http_status_code=200
@@ -411,6 +443,7 @@ async def delete_extract_image_data(request: Request, image_hash: str):
             error_string=str(e),
             http_status_code=500
         )
+
 
 @router.delete("/extracts/delete-extract-dataset", 
             description="Delete all the extracted images in a dataset",
