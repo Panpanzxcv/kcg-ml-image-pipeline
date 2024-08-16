@@ -206,35 +206,19 @@ async def update_rank_model_in_image_pairs(
         )
 
 
-@router.delete("/ab-rank/remove-rank-model/{rank_model_id}", 
+@router.delete("/ab-rank/remove-rank-model/{rank_model_id}",
                response_model=StandardSuccessResponseV1[WasPresentResponse], 
                description="remove rank with rank_model_id", 
                tags=["ab-rank"], 
                status_code=200,
                responses=ApiResponseHandlerV1.listErrors([400, 422, 500]))
 def remove_rank(request: Request, rank_model_id: int ):
-
     response_handler = ApiResponseHandlerV1(request)
 
-    # Check if the rank exists
-    rank_model_query = {"rank_model_id": rank_model_id}
-    rank = request.app.rank_collection.find_one(rank_model_query)
-    
-    if rank is None:
-        # Return standard response with wasPresent: false
-        return response_handler.create_success_delete_response_v1(
-                                                           False,
-                                                           http_status_code=200
-                                                           )
+    result = request.app.rank_collection.delete_one({"rank_model_id": rank_model_id})
 
-    # Remove the rank
-    request.app.rank_collection.delete_one(rank_model_query)
-
-    # Return standard response with wasPresent: true
-    return response_handler.create_success_delete_response_v1(
-                                                       True,
-                                                       http_status_code=200
-                                                       )
+    # Return a standard response with wasPresent set to true if there was a deletion
+    return response_handler.create_success_delete_response_v1(result.deleted_count != 0)
 
 
 @router.get("/ab-rank/list-rank-models",
@@ -416,17 +400,6 @@ async def update_rank_model_category(
 def delete_rank_model_category(request: Request, rank_model_category_id: int):
     response_handler = ApiResponseHandlerV1(request)
 
-    # Check if the rank category exists
-    category_query = {"rank_model_category_id": rank_model_category_id}
-    category = request.app.rank_model_categories_collection.find_one(category_query)
-
-    if category is None:
-        # Return standard response with wasPresent: false
-        return response_handler.create_success_delete_response_v1(
-                                                           False,
-                                                           http_status_code=200,
-                                                           )
-
     # Check if the rank category is used in any ranks
     rank_model_query = {"rank_model_category_id": rank_model_category_id}
     rank_model_with_category = request.app.rank_collection.find_one(rank_model_query)
@@ -437,17 +410,13 @@ def delete_rank_model_category(request: Request, rank_model_category_id: int):
             error_code=ErrorCode.INVALID_PARAMS,
             error_string="Cannot remove rank category, it is already used in ranks.",
             http_status_code=400,
-            
         )
 
     # Remove the rank category
-    request.app.rank_model_categories_collection.delete_one(category_query)
+    result = request.app.rank_model_categories_collection.delete_one({"rank_model_category_id": rank_model_category_id})
 
-    # Return standard response with wasPresent: true
-    return response_handler.create_success_delete_response_v1(
-                                                       True,
-                                                       http_status_code=200,
-                                                       )
+    # Return a standard response with wasPresent set to true if there was a deletion
+    return response_handler.create_success_delete_response_v1(result.deleted_count != 0)
 
 
 

@@ -613,24 +613,10 @@ def update_ranking_file(request: Request, dataset: str, filename: str, update_da
 async def clear_dataset_sequential_id_jobs(request: Request):
     response_handler = await ApiResponseHandlerV1.createInstance(request)
     try:
-        # Check if there are documents in the collection
-        was_present = request.app.dataset_sequential_id_collection.count_documents({}) > 0
-
-        if not was_present:
-            # If no documents are present, return False in the wasPresent field of the response
-            return response_handler.create_success_delete_response_v1(
-                False, 
-                http_status_code=200
-            )
-
         # If documents are present, delete them
-        request.app.dataset_sequential_id_collection.delete_many({})
-
-        # Assuming deletion is always successful, return True in the wasPresent field
-        return response_handler.create_success_delete_response_v1(
-            True, 
-            http_status_code=200
-        )
+        result = request.app.dataset_sequential_id_collection.delete_many({})
+        # Return a standard response with wasPresent set to true if there was a deletion
+        return response_handler.create_success_delete_response_v1(result.deleted_count != 0)
     except Exception as e:
         return response_handler.create_error_response_v1(
             error_code=ErrorCode.OTHER_ERROR,
@@ -759,24 +745,10 @@ async def get_sequential_id_1(request: Request, dataset: str = Query(..., descri
 async def clear_self_training_sequential_id_jobs(request: Request):
     response_handler = await ApiResponseHandlerV1.createInstance(request)
     try:
-
-        # Check if there are documents in the collection
-        was_present = request.app.self_training_sequential_id_collection.count_documents({}) > 0
-
-        if not was_present:
-            # If no documents are present, return False in the wasPresent field of the response
-            return response_handler.create_success_delete_response_v1(
-                False, 
-                http_status_code=200
-            )
-
-
-        request.app.self_training_sequential_id_collection.delete_many({})
-        # Assuming deletion is always successful, returning True for simplification
-        return response_handler.create_success_delete_response_v1(
-            True, 
-            http_status_code=200
-        )
+        # If documents are present, delete them
+        result = request.app.self_training_sequential_id_collection.delete_many({})
+        # Return a standard response with wasPresent set to true if there was a deletion
+        return response_handler.create_success_delete_response_v1(result.deleted_count != 0)
     except Exception as e:
         return response_handler.create_error_response_v1(
             error_code=ErrorCode.OTHER_ERROR,
@@ -913,21 +885,9 @@ async def remove_dataset(request: Request, dataset: str = Query(...)):
     config_result = request.app.dataset_config_collection.delete_one({"dataset_name": dataset})
 
     # Check if either the dataset or its configuration was present and deleted
-    was_present = dataset_result.deleted_count > 0
-
-    # Using the check to determine which response to send
-    if was_present:
-        # If either was deleted, return True
-        return response_handler.create_success_delete_response_v1(
-            True, 
-            http_status_code=200
-        )
-    else:
-        # If neither was deleted, return False
-        return response_handler.create_success_delete_response_v1(
-            False, 
-            http_status_code=200
-        )
+    was_present = dataset_result.deleted_count > 0 or config_result.deleted_count > 0
+    # Return a standard response with wasPresent set to true if there was a deletion
+    return response_handler.create_success_delete_response_v1(was_present)
 
 @router.delete("/datasets/remove-dataset-v1",
                description="Remove dataset in MongoDB",
@@ -948,20 +908,5 @@ async def remove_dataset_v1(request: Request, dataset_id: int = Query(...)):
 
     # Attempt to delete the dataset
     dataset_result = request.app.datasets_collection.delete_one({"dataset_id": dataset_id})
-
-    # Check if either the dataset or its configuration was present and deleted
-    was_present = dataset_result.deleted_count > 0 
-
-    # Using the check to determine which response to send
-    if was_present:
-        # If either was deleted, return True
-        return response_handler.create_success_delete_response_v1(
-            True, 
-            http_status_code=200
-        )
-    else:
-        # If neither was deleted, return False
-        return response_handler.create_success_delete_response_v1(
-            False, 
-            http_status_code=200
-        )        
+    # Return a standard response with wasPresent set to true if there was a deletion
+    return response_handler.create_success_delete_response_v1(dataset_result.deleted_count != 0)
