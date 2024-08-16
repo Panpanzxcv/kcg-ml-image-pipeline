@@ -281,9 +281,12 @@ async def delete_completed_job(request: Request, uuid: str):
         # Delete the image from MongoDB collections
         request.app.completed_jobs_collection.delete_one({"uuid": uuid})
 
-        # Determine the bucket name from the file path
-        bucket_name = file_path.split("/")[0] if file_path else None
-        object_name = file_path
+        # Correctly split the file path to get the bucket name and object name
+        path_parts = file_path.split("/", 1)
+        bucket_name = path_parts[0] if len(path_parts) > 0 else None
+        print(bucket_name)
+        object_name = path_parts[1] if len(path_parts) > 1 else None
+        print(object_name)
 
         # Delete the related files from MinIO
         if bucket_name and object_name:
@@ -309,6 +312,7 @@ async def delete_completed_job(request: Request, uuid: str):
             error_string=str(e),
             http_status_code=500,
         )
+
 
 
  # --------------------- List ----------------------
