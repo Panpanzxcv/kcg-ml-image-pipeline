@@ -245,7 +245,7 @@ async def delete_completed_job(request: Request, uuid: str):
 
         if job is None:
             return api_response_handler.create_success_delete_response_v1(
-                response_data=False,  
+                False,  
                 http_status_code=200,
             )
 
@@ -299,7 +299,7 @@ async def delete_completed_job(request: Request, uuid: str):
                 cmd.remove_an_object(request.app.minio_client, bucket_name, file)
 
         return api_response_handler.create_success_delete_response_v1(
-            response_data=True, 
+            True, 
             http_status_code=200,
         )
 
