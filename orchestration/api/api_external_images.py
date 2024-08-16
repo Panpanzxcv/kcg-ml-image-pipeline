@@ -372,7 +372,7 @@ async def get_external_image_list_without_extracts(request: Request, dataset: st
         )
 
 @router.delete("/external-images/delete-external-image", 
-            description="Delete an external image data",
+            description="Delete an external image data if it's not used in a selection datapoint or has a tag assigned",
             tags=["external-images"],  
             response_model=StandardSuccessResponseV1[WasPresentResponse],  
             responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
@@ -380,6 +380,34 @@ async def delete_external_image_data(request: Request, image_hash: str):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
 
     try:
+        # Check if the image is used in a selection datapoint
+        datapoint_usage = request.app.ranking_datapoints_collection.find_one({
+            "$or": [
+                {"image_1_metadata.file_hash": image_hash},
+                {"image_2_metadata.file_hash": image_hash}
+            ]
+        })
+        
+        if datapoint_usage:
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS,
+                error_string=f"Image with hash {image_hash} is used in a selection datapoint.",
+                http_status_code=422
+            )
+        
+        # Check if the image has a tag assigned
+        tag_assigned = request.app.image_tags_collection.find_one({
+            "image_hash": image_hash
+        })
+
+        if tag_assigned:
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS,
+                error_string=f"Image with hash {image_hash} has a tag assigned.",
+                http_status_code=422
+            )
+
+        # Perform the deletion if no conditions are met
         result = request.app.external_images_collection.delete_one({
             "image_hash": image_hash
         })
@@ -402,23 +430,52 @@ async def delete_external_image_data(request: Request, image_hash: str):
             http_status_code=500
         )
 
+
     
 
 @router.delete("/external-images/delete-external-image-list", 
-            description="Delete an external image data list",
+            description="Delete an external image data list if they are not used in a selection datapoint or have a tag assigned",
             tags=["external-images"],  
             response_model=StandardSuccessResponseV1[DeletedCount],  
-            responses=ApiResponseHandlerV1.listErrors([404,422, 500]))
-async def delete_external_image_data_list(request: Request, image_hash_list:List[str] ):
+            responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
+async def delete_external_image_data_list(request: Request, image_hash_list: List[str]):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
 
     try:
         deleted_count = 0
         for image_hash in image_hash_list:
+            # Check if the image is used in a selection datapoint
+            datapoint_usage = request.app.ranking_datapoints_collection.find_one({
+                "$or": [
+                    {"image_1_metadata.file_hash": image_hash},
+                    {"image_2_metadata.file_hash": image_hash}
+                ]
+            })
+
+            if datapoint_usage:
+                return api_response_handler.create_error_response_v1(
+                    error_code=ErrorCode.INVALID_PARAMS,
+                    error_string=f"Image with hash {image_hash} is used in a selection datapoint.",
+                    http_status_code=422
+                )
+
+            # Check if the image has a tag assigned
+            tag_assigned = request.app.image_tags_collection.find_one({
+                "image_hash": image_hash
+            })
+
+            if tag_assigned:
+                return api_response_handler.create_error_response_v1(
+                    error_code=ErrorCode.INVALID_PARAMS,
+                    error_string=f"Image with hash {image_hash} has a tag assigned.",
+                    http_status_code=422
+                )
+
+            # Perform the deletion if no conditions are met
             result = request.app.external_images_collection.delete_one({
                 "image_hash": image_hash
             })
-            
+
             if result.deleted_count > 0:
                 deleted_count += 1
             

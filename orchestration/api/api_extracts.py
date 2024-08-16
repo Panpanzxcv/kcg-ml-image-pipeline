@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 import random
 from .api_clip import http_clip_server_get_cosine_similarity_list
 import time
+import os
 
 
 router = APIRouter()
@@ -353,7 +354,7 @@ async def get_all_extracts_list_v1(request: Request, dataset: Optional[List[str]
 
     
 @router.delete("/extracts/delete-extract", 
-            description="Delete an extracted image",
+            description="Delete an extracted image if it is not used in a selection datapoint or has a tag assigned",
             tags=["extracts"],  
             response_model=StandardSuccessResponseV1[WasPresentResponse],  
             responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
@@ -361,10 +362,38 @@ async def delete_extract_image_data(request: Request, image_hash: str):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
 
     try:
+        # Check if the image is used in a selection datapoint
+        datapoint_usage = request.app.ranking_datapoints_collection.find_one({
+            "$or": [
+                {"image_1_metadata.file_hash": image_hash},
+                {"image_2_metadata.file_hash": image_hash}
+            ]
+        })
+
+        if datapoint_usage:
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS,
+                error_string=f"Image with hash {image_hash} is used in a selection datapoint.",
+                http_status_code=422
+            )
+
+        # Check if the image has a tag assigned
+        tag_assigned = request.app.image_tags_collection.find_one({
+            "image_hash": image_hash
+        })
+
+        if tag_assigned:
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS,
+                error_string=f"Image with hash {image_hash} has a tag assigned.",
+                http_status_code=422
+            )
+
+        # Perform the deletion if no conditions are met
         result = request.app.extracts_collection.delete_one({
             "image_hash": image_hash
         })
-        
+
         if result.deleted_count == 0:
             return api_response_handler.create_success_delete_response_v1(
                 False, 
@@ -372,9 +401,9 @@ async def delete_extract_image_data(request: Request, image_hash: str):
             )
         
         return api_response_handler.create_success_delete_response_v1(
-                True, 
-                http_status_code=200
-            )
+            True, 
+            http_status_code=200
+        )
     
     except Exception as e:
         return api_response_handler.create_error_response_v1(

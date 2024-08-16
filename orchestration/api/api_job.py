@@ -234,35 +234,83 @@ def delete_completed_job(request: Request, uuid):
 @router.delete(
     "/queue/image-generation/delete-completed-by-uuid",
     description="Remove a completed job by UUID.",
-    response_model=StandardSuccessResponse[WasPresentResponse],
+    response_model=StandardSuccessResponseV1[WasPresentResponse],
     tags=["jobs-standardized"],
-    responses=ApiResponseHandler.listErrors([422,500]),
+    responses=ApiResponseHandlerV1.listErrors([422,500]),
 )
-def delete_completed_job(request: Request, uuid: str):
-    api_response_handler = ApiResponseHandler(request)
+async def delete_completed_job(request: Request, uuid: str):
+    api_response_handler = await ApiResponseHandlerV1.createInstance(request)
     try:
         job = request.app.completed_jobs_collection.find_one({"uuid": uuid})
 
         if job is None:
-            return api_response_handler.create_success_delete_response(
+            return api_response_handler.create_success_delete_response_v1(
                 response_data=False,  
                 http_status_code=200,
             )
 
-        # If job is found, delete it
+        # Check if the image is used in ranking datapoints or has a tag assigned
+        image_hash = job.get("task_output_file_dict", {}).get("output_file_hash")
+        file_path = job.get("task_output_file_dict", {}).get("output_file_path")
+
+        if not image_hash or not file_path:
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS,
+                error_string="No valid image hash or file path found in the job.",
+                http_status_code=422
+            )
+
+        datapoint_exists = request.app.ranking_datapoints_collection.find_one({
+            "$or": [
+                {"image_1_metadata.file_hash": image_hash},
+                {"image_2_metadata.file_hash": image_hash}
+            ]
+        })
+
+        tag_exists = request.app.image_tags_collection.find_one({
+            "image_hash": image_hash
+        })
+
+        if datapoint_exists or tag_exists:
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS,
+                error_string="Cannot delete the image as it is used in a datapoint or has a tag assigned.",
+                http_status_code=422
+            )
+
+        # Delete the image from MongoDB collections
         request.app.completed_jobs_collection.delete_one({"uuid": uuid})
 
-        return api_response_handler.create_success_delete_response(
+        # Determine the bucket name from the file path
+        bucket_name = file_path.split("/")[0] if file_path else None
+        object_name = file_path
+
+        # Delete the related files from MinIO
+        if bucket_name and object_name:
+            cmd.remove_an_object(request.app.minio_client, bucket_name, object_name)
+            # Delete associated files with the same prefix (e.g., .jpg, .msgpack)
+            associated_files = [
+                f"{object_name.rsplit('.', 1)[0]}_clip.msgpack",
+                f"{object_name.rsplit('.', 1)[0]}_data.msgpack",
+                f"{object_name.rsplit('.', 1)[0]}_embedding.msgpack",
+                f"{object_name.rsplit('.', 1)[0]}_vae_latent.msgpack",
+            ]
+            for file in associated_files:
+                cmd.remove_an_object(request.app.minio_client, bucket_name, file)
+
+        return api_response_handler.create_success_delete_response_v1(
             response_data=True, 
             http_status_code=200,
         )
 
     except Exception as e:
-        return api_response_handler.create_error_response(
+        return api_response_handler.create_error_response_v1(
             error_code=ErrorCode.OTHER_ERROR,
             error_string=str(e),
             http_status_code=500,
         )
+
+
  # --------------------- List ----------------------
 
 @router.get("/queue/image-generation/list-pending", tags = ['deprecated3'], description= "changed with /queue/image-generation/list-pending-jobs")
