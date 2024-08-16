@@ -290,9 +290,10 @@ async def delete_completed_job(request: Request, uuid: str):
 
         # Delete the related files from MinIO
         if bucket_name and object_name:
-            cmd.remove_an_object(request.app.minio_client, bucket_name, object_name)
+            cmd.remove_an_object(request.app.minio_client, bucket_name, object_name) 
             # Delete associated files with the same prefix (e.g., .jpg, .msgpack)
             associated_files = [
+                f"{object_name.rsplit('.', 1)[0]}_clip_kandinsky.msgpack",
                 f"{object_name.rsplit('.', 1)[0]}_clip.msgpack",
                 f"{object_name.rsplit('.', 1)[0]}_data.msgpack",
                 f"{object_name.rsplit('.', 1)[0]}_embedding.msgpack",
