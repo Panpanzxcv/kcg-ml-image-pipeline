@@ -100,7 +100,7 @@ class ImageExtractionPipeline:
         self.device = torch.device(device)
 
         # models
-        self.quality_models= []
+        self.quality_models= {}
         self.topic_models= {}
         self.irrelevant_image_models= {}
         self.defect_models= {}
@@ -119,7 +119,7 @@ class ImageExtractionPipeline:
                 ranking_model_type = rank_info["model_type"]
                 rank_id = rank_info["rank_id"]
 
-                if  ranking_model_type != "elm-v1" or rank_id not in [0,3]:
+                if  ranking_model_type != "elm-v1" or rank_id not in [0,3,1]:
                     continue
 
                 rank_id = rank_info["rank_id"]
@@ -127,7 +127,7 @@ class ImageExtractionPipeline:
                 rank_model= None
 
                 rank_model = load_scoring_model(self.minio_client, rank_id, model_path, self.device)
-                self.quality_models.append(rank_model)
+                self.quality_models[rank_id]= rank_model
             
             # load topic and defect models
             print("loading the classifier models")
@@ -169,7 +169,7 @@ class ImageExtractionPipeline:
 
     def get_classifier_model(self, tag_name):
         input_path = f"environmental/models/classifiers/{tag_name}/"
-        file_suffix = "elm-regression-clip-h.pth"
+        file_suffix = "elm-regression-clip-h-all_resolutions.pth"
 
         # Use the MinIO client's list_objects method directly with recursive=True
         model_files = [obj.object_name for obj in self.minio_client.list_objects('datasets', prefix=input_path, recursive=True) if obj.object_name.endswith(file_suffix)]
@@ -215,10 +215,11 @@ class ImageExtractionPipeline:
             with torch.no_grad():
                 classifier_score = model.classify(clip_vector).item()
             if classifier_score >= self.min_classifier_score:
+                print(f"Accepted with classifier score {classifier_score} for the tag: {tag}")
                 return False
         
         # Check quality score
-        for model in self.quality_models:
+        for rank_id, model in self.quality_models.items():
             with torch.no_grad():
                 clip_score = model.predict_clip(clip_vector).item()
                 score_mean= float(model.mean)
@@ -226,6 +227,7 @@ class ImageExtractionPipeline:
                 sigma_score = (clip_score - score_mean) / score_std
             
             if sigma_score >= self.min_quality_sigma:
+                print(f"Accepted with rank score {clip_score} and sigma {sigma_score} for the rank: {rank_id}")
                 return False
         
         return True
@@ -244,73 +246,80 @@ class ImageExtractionPipeline:
             # get the clip vector from the image
             with torch.no_grad():
                 clip_vector= self.clip.get_image_features(image).to(dtype=torch.float32)
-            # filter the image if it's not useful
+
+            source_image_data= external_images[index]
+
             if not self.is_filtered(clip_vector):
-                # calculate vae latent
-                pixel_values = np.array(image).astype(np.float32) / 127.5 - 1  # Normalize
-                pixel_values = np.transpose(pixel_values, [2, 0, 1])  # Correct channel order: [C, H, W]
-                pixel_values = torch.from_numpy(pixel_values).unsqueeze(0).to(device=self.device)  # Add batch dimension
+                print(f"image file path {source_image_data['file_path']}")
 
-                with torch.no_grad():
-                    vae_latent = self.vae.encode(pixel_values).latents
+            index+=1 
+            # filter the image if it's not useful
+        #     if not self.is_filtered(clip_vector):
+        #         # calculate vae latent
+        #         pixel_values = np.array(image).astype(np.float32) / 127.5 - 1  # Normalize
+        #         pixel_values = np.transpose(pixel_values, [2, 0, 1])  # Correct channel order: [C, H, W]
+        #         pixel_values = torch.from_numpy(pixel_values).unsqueeze(0).to(device=self.device)  # Add batch dimension
 
-                pixel_values.cpu()
-                del pixel_values
-                torch.cuda.empty_cache()
+        #         with torch.no_grad():
+        #             vae_latent = self.vae.encode(pixel_values).latents
 
-                # store data
-                source_image_data= external_images[index]
+        #         pixel_values.cpu()
+        #         del pixel_values
+        #         torch.cuda.empty_cache()
+
+        #         # store data
+        #         source_image_data= external_images[index]
                 
-                data={
-                    "image_hash" : hashlib.md5(image_data.getvalue()).hexdigest(),
-                    "image_uuid": str(uuid.uuid4()),
-                    "image": image,
-                    "clip_vector": clip_vector,
-                    "vae_latent" : vae_latent,
-                    "source_image_hash": source_image_data["image_hash"],
-                    "source_image_uuid": source_image_data["uuid"],
-                    "extraction_policy": extraction_policy,
-                    "dataset": source_image_data["dataset"]
-                }
+        #         data={
+        #             "image_hash" : hashlib.md5(image_data.getvalue()).hexdigest(),
+        #             "image_uuid": str(uuid.uuid4()),
+        #             "image": image,
+        #             "clip_vector": clip_vector,
+        #             "vae_latent" : vae_latent,
+        #             "source_image_hash": source_image_data["image_hash"],
+        #             "source_image_uuid": source_image_data["uuid"],
+        #             "extraction_policy": extraction_policy,
+        #             "dataset": source_image_data["dataset"]
+        #         }
 
-                extract_data.append(data)
+        #         extract_data.append(data)
 
-                # spawn upload data thread
-                thread = threading.Thread(target=upload_extract_data, args=(self.minio_client, data,))
-                thread.start()
-                self.threads.append(thread)
+        #         # spawn upload data thread
+        #         thread = threading.Thread(target=upload_extract_data, args=(self.minio_client, data,))
+        #         thread.start()
+        #         self.threads.append(thread)
 
-                self.clip_vectors.append(clip_vector)
-                self.vae_latents.append(vae_latent)
-                self.image_hashes.append(data["image_hash"])
+        #         self.clip_vectors.append(clip_vector)
+        #         self.vae_latents.append(vae_latent)
+        #         self.image_hashes.append(data["image_hash"])
                 
-                # check if batch size was reached
-                if len(self.clip_vectors) >= self.file_batch_size:
-                    # save batch file
-                    clip_vectors= self.clip_vectors.copy()
-                    vae_latents= self.vae_latents.copy()
+        #         # check if batch size was reached
+        #         if len(self.clip_vectors) >= self.file_batch_size:
+        #             # save batch file
+        #             clip_vectors= self.clip_vectors.copy()
+        #             vae_latents= self.vae_latents.copy()
 
-                    self.clip_vectors =[]
-                    self.vae_latents =[]
+        #             self.clip_vectors =[]
+        #             self.vae_latents =[]
 
-                    thread = threading.Thread(target=save_latents_and_vectors, args=(self.minio_client, self.dataset, clip_vectors, vae_latents, self.image_hashes,))
-                    thread.start()
-                    self.threads.append(thread)
+        #             thread = threading.Thread(target=save_latents_and_vectors, args=(self.minio_client, self.dataset, clip_vectors, vae_latents, self.image_hashes,))
+        #             thread.start()
+        #             self.threads.append(thread)
             
-            index+=1
+        #     index+=1
         
-        # save any extra vectors to numpy files
-        if len(self.clip_vectors) > 0:
-            # save batch file
-            clip_vectors= self.clip_vectors.copy()
-            vae_latents= self.vae_latents.copy()
+        # # save any extra vectors to numpy files
+        # if len(self.clip_vectors) > 0:
+        #     # save batch file
+        #     clip_vectors= self.clip_vectors.copy()
+        #     vae_latents= self.vae_latents.copy()
 
-            self.clip_vectors =[]
-            self.vae_latents =[]
+        #     self.clip_vectors =[]
+        #     self.vae_latents =[]
             
-            thread = threading.Thread(target=save_latents_and_vectors, args=(self.minio_client, self.dataset, clip_vectors, vae_latents, self.image_hashes,))
-            thread.start()
-            self.threads.append(thread)
+        #     thread = threading.Thread(target=save_latents_and_vectors, args=(self.minio_client, self.dataset, clip_vectors, vae_latents, self.image_hashes,))
+        #     thread.start()
+        #     self.threads.append(thread)
 
         return extract_data
 
