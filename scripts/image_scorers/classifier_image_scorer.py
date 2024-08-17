@@ -116,6 +116,8 @@ def load_model(minio_client, classifier_model_info, device):
         print(f"Not support for classifier model: {classifier_name}")
         return None
     
+    print(model_file_name)
+    
     return loaded_model
 
 def calculate_and_upload_scores(rank, world_size, dataset_names, datasets, image_source, classifier_models, batch_size):
