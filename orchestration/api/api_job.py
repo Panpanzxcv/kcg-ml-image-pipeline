@@ -236,7 +236,7 @@ def delete_completed_job(request: Request, uuid):
     description="Remove a completed job by UUID.",
     response_model=StandardSuccessResponseV1[WasPresentResponse],
     tags=["jobs-standardized"],
-    responses=ApiResponseHandlerV1.listErrors([422,500]),
+    responses=ApiResponseHandlerV1.listErrors([422, 500]),
 )
 async def delete_completed_job(request: Request, uuid: str):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
@@ -245,7 +245,7 @@ async def delete_completed_job(request: Request, uuid: str):
 
         if job is None:
             return api_response_handler.create_success_delete_response_v1(
-                False,  
+                False,
                 http_status_code=200,
             )
 
@@ -281,16 +281,33 @@ async def delete_completed_job(request: Request, uuid: str):
         # Delete the image from MongoDB collections
         request.app.completed_jobs_collection.delete_one({"uuid": uuid})
 
+        # Also remove the image data from other related collections
+        collections_to_remove = [
+            "image_rank_scores_collection",
+            "image_classifier_scores_collection",
+            "image_sigma_scores_collection",
+            "image_residuals_collection",
+            "image_percentiles_collection",
+            "image_residual_percentiles_collection",
+            "image_rank_use_count_collection",
+            "irrelevant_images_collection",  # This uses "file_hash" instead of "image_hash"
+            "image_hashes_collection"
+        ]
+
+        for collection_name in collections_to_remove:
+            if collection_name == "irrelevant_images_collection":
+                request.app[collection_name].delete_many({"file_hash": image_hash})
+            else:
+                request.app[collection_name].delete_many({"image_hash": image_hash})
+
         # Correctly split the file path to get the bucket name and object name
         path_parts = file_path.split("/", 1)
         bucket_name = path_parts[0] if len(path_parts) > 0 else None
-        print(bucket_name)
         object_name = path_parts[1] if len(path_parts) > 1 else None
-        print(object_name)
 
         # Delete the related files from MinIO
         if bucket_name and object_name:
-            cmd.remove_an_object(request.app.minio_client, bucket_name, object_name) 
+            cmd.remove_an_object(request.app.minio_client, bucket_name, object_name)
             # Delete associated files with the same prefix (e.g., .jpg, .msgpack)
             associated_files = [
                 f"{object_name.rsplit('.', 1)[0]}_clip_kandinsky.msgpack",
@@ -303,7 +320,7 @@ async def delete_completed_job(request: Request, uuid: str):
                 cmd.remove_an_object(request.app.minio_client, bucket_name, file)
 
         return api_response_handler.create_success_delete_response_v1(
-            True, 
+            True,
             http_status_code=200,
         )
 
@@ -313,6 +330,7 @@ async def delete_completed_job(request: Request, uuid: str):
             error_string=str(e),
             http_status_code=500,
         )
+
 
 
 
