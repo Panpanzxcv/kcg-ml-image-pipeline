@@ -283,22 +283,22 @@ async def delete_completed_job(request: Request, uuid: str):
 
         # Also remove the image data from other related collections
         collections_to_remove = [
-            "image_rank_scores_collection",
-            "image_classifier_scores_collection",
-            "image_sigma_scores_collection",
-            "image_residuals_collection",
-            "image_percentiles_collection",
-            "image_residual_percentiles_collection",
-            "image_rank_use_count_collection",
-            "irrelevant_images_collection",  # This uses "file_hash" instead of "image_hash"
-            "image_hashes_collection"
+            request.app.image_rank_scores_collection,
+            request.app.image_classifier_scores_collection,
+            request.app.image_sigma_scores_collection,
+            request.app.image_residuals_collection,
+            request.app.image_percentiles_collection,
+            request.app.image_residual_percentiles_collection,
+            request.app.image_rank_use_count_collection,
+            request.app.irrelevant_images_collection,  # This uses "file_hash" instead of "image_hash"
+            request.app.image_hashes_collection,
         ]
 
-        for collection_name in collections_to_remove:
-            if collection_name == "irrelevant_images_collection":
-                request.app[collection_name].delete_many({"file_hash": image_hash})
+        for collection in collections_to_remove:
+            if collection == request.app.irrelevant_images_collection:
+                collection.delete_many({"file_hash": image_hash})
             else:
-                request.app[collection_name].delete_many({"image_hash": image_hash})
+                collection.delete_many({"image_hash": image_hash})
 
         # Correctly split the file path to get the bucket name and object name
         path_parts = file_path.split("/", 1)
@@ -330,6 +330,7 @@ async def delete_completed_job(request: Request, uuid: str):
             error_string=str(e),
             http_status_code=500,
         )
+
 
 
 
