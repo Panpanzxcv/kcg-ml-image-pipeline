@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Body, Request, HTTPException, Query, status
 from typing import Optional
 from utility.path import separate_bucket_and_file_path
-from .api_utils import ApiResponseHandlerV1, StandardSuccessResponseV1, ErrorCode, WasPresentResponse, DeletedCount, validate_date_format, TagListForImages, TagCountResponse, TagListForImagesV1, insert_into_all_images, generate_uuid
+from .api_utils import ApiResponseHandlerV1, StandardSuccessResponseV1, ErrorCode, WasPresentResponse, DeletedCount, validate_date_format, TagListForImages, TagCountResponse, TagListForImagesV1, insert_into_all_images, generate_uuid,  check_image_usage, remove_from_additional_collections, delete_files_from_minio
 from .mongo_schemas import ExternalImageData, ImageHashRequest, ListExternalImageData, ListImageHashRequest, ExternalImageDataV1, ListExternalImageDataV1, ListDatasetV1, ListExternalImageDataWithSimilarityScore, Dataset, ListExternalImageDataV2, ListDataset
 from orchestration.api.mongo_schema.tag_schemas import ExternalImageTag, ListExternalImageTag, ImageTag, ListImageTag
 from typing import List
@@ -380,30 +380,13 @@ async def delete_external_image_data(request: Request, image_hash: str):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
 
     try:
-        # Check if the image is used in a selection datapoint
-        datapoint_usage = request.app.ranking_datapoints_collection.find_one({
-            "$or": [
-                {"image_1_metadata.file_hash": image_hash},
-                {"image_2_metadata.file_hash": image_hash}
-            ]
-        })
-        
-        if datapoint_usage:
-            return api_response_handler.create_error_response_v1(
-                error_code=ErrorCode.INVALID_PARAMS,
-                error_string=f"Image with hash {image_hash} is used in a selection datapoint.",
-                http_status_code=422
-            )
-        
-        # Check if the image has a tag assigned
-        tag_assigned = request.app.image_tags_collection.find_one({
-            "image_hash": image_hash
-        })
+        # Check if the image is used in ranking datapoints or has a tag assigned
+        is_safe_to_delete, error_message = check_image_usage(request, image_hash)
 
-        if tag_assigned:
+        if not is_safe_to_delete:
             return api_response_handler.create_error_response_v1(
                 error_code=ErrorCode.INVALID_PARAMS,
-                error_string=f"Image with hash {image_hash} has a tag assigned.",
+                error_string=error_message,
                 http_status_code=422
             )
 
@@ -424,37 +407,26 @@ async def delete_external_image_data(request: Request, image_hash: str):
                 http_status_code=422
             )
 
-        # Remove the image data from specified collections
-        collections_to_remove = [
-            request.app.image_rank_scores_collection,
-            request.app.image_classifier_scores_collection,
-            request.app.image_rank_use_count_collection,
-            request.app.irrelevant_images_collection,  # This uses "file_hash" instead of "image_hash"
-            request.app.image_hashes_collection,
-        ]
+        # Remove the image data from additional collections
+        remove_from_additional_collections(request, image_hash)
 
-        for collection in collections_to_remove:
-            if collection == request.app.irrelevant_images_collection:
-                collection.delete_many({"file_hash": image_hash})
-            else:
-                collection.delete_many({"image_hash": image_hash})
-
-        # Correctly split the file path to get the bucket name and object name
         path_parts = file_path.split("/", 1)
-        bucket_name = path_parts[0] if len(path_parts) > 0 else None
-        object_name = path_parts[1] if len(path_parts) > 1 else None
+        if len(path_parts) < 2:
+            print(f"Error: Path format is not correct for file_path: {file_path}")
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS,
+                error_string="The file path format is incorrect; expected 'bucket_name/object_name'.",
+                http_status_code=422
+            )
+
+        bucket_name = path_parts[0]
+        object_name = path_parts[1]
 
         # Delete the related files from MinIO
         if bucket_name and object_name:
-            cmd.remove_an_object(request.app.minio_client, bucket_name, object_name)
-            # Delete associated files with the same prefix (e.g., .jpg, .msgpack)
-            associated_files = [
-                f"{object_name.rsplit('.', 1)[0]}_clip_kandinsky.msgpack"
-            ]
-            for file in associated_files:
-                cmd.remove_an_object(request.app.minio_client, bucket_name, file)
+            delete_files_from_minio(request.app.minio_client, bucket_name, object_name)
 
-        # Finally, delete the image from the external_images_collection
+        # Finally, delete the image from external_images_collection
         result = request.app.external_images_collection.delete_one({"image_hash": image_hash})
 
         if result.deleted_count == 0:
@@ -479,6 +451,7 @@ async def delete_external_image_data(request: Request, image_hash: str):
 
 
 
+
 @router.delete("/external-images/delete-external-image-list", 
             description="Delete a list of external image data if they are not used in a selection datapoint or have a tag assigned",
             tags=["external-images"],  
@@ -490,30 +463,13 @@ async def delete_external_image_data_list(request: Request, image_hash_list: Lis
     try:
         deleted_count = 0
         for image_hash in image_hash_list:
-            # Check if the image is used in a selection datapoint
-            datapoint_usage = request.app.ranking_datapoints_collection.find_one({
-                "$or": [
-                    {"image_1_metadata.file_hash": image_hash},
-                    {"image_2_metadata.file_hash": image_hash}
-                ]
-            })
+            # Use the helper function to check image usage
+            is_safe_to_delete, error_message = check_image_usage(request, image_hash)
 
-            if datapoint_usage:
+            if not is_safe_to_delete:
                 return api_response_handler.create_error_response_v1(
                     error_code=ErrorCode.INVALID_PARAMS,
-                    error_string=f"Image with hash {image_hash} is used in a selection datapoint.",
-                    http_status_code=422
-                )
-
-            # Check if the image has a tag assigned
-            tag_assigned = request.app.image_tags_collection.find_one({
-                "image_hash": image_hash
-            })
-
-            if tag_assigned:
-                return api_response_handler.create_error_response_v1(
-                    error_code=ErrorCode.INVALID_PARAMS,
-                    error_string=f"Image with hash {image_hash} has a tag assigned.",
+                    error_string=error_message,
                     http_status_code=422
                 )
 
@@ -531,36 +487,26 @@ async def delete_external_image_data_list(request: Request, image_hash_list: Lis
                     http_status_code=422
                 )
 
-            # Remove the image data from specified collections
-            collections_to_remove = [
-                request.app.image_rank_scores_collection,
-                request.app.image_classifier_scores_collection,
-                request.app.image_rank_use_count_collection,
-                request.app.irrelevant_images_collection,  # This uses "file_hash" instead of "image_hash"
-                request.app.image_hashes_collection,
-            ]
+            # Remove the image data from additional collections
+            remove_from_additional_collections(request, image_hash)
 
-            for collection in collections_to_remove:
-                if collection == request.app.irrelevant_images_collection:
-                    collection.delete_many({"file_hash": image_hash})
-                else:
-                    collection.delete_many({"image_hash": image_hash})
-
-            # Correctly split the file path to get the bucket name and object name
             path_parts = file_path.split("/", 1)
-            bucket_name = path_parts[0] if len(path_parts) > 0 else None
-            object_name = path_parts[1] if len(path_parts) > 1 else None
+            if len(path_parts) < 2:
+                print(f"Error: Path format is not correct for file_path: {file_path}")
+                return api_response_handler.create_error_response_v1(
+                    error_code=ErrorCode.INVALID_PARAMS,
+                    error_string="The file path format is incorrect; expected 'bucket_name/object_name'.",
+                    http_status_code=422
+                )
+
+            bucket_name = path_parts[0]
+            object_name = path_parts[1]
+
 
             # Delete the related files from MinIO
             if bucket_name and object_name:
-                cmd.remove_an_object(request.app.minio_client, bucket_name, object_name)
-                # Delete associated files with the same prefix (e.g., .jpg, .msgpack)
-                associated_files = [
-                    f"{object_name.rsplit('.', 1)[0]}_clip_kandinsky.msgpack"
-                ]
-                for file in associated_files:
-                    cmd.remove_an_object(request.app.minio_client, bucket_name, file)
-            
+                delete_files_from_minio(request.app.minio_client, bucket_name, object_name)
+
             # Perform the deletion in MongoDB as the last step
             result = request.app.external_images_collection.delete_one({"image_hash": image_hash})
 
@@ -578,6 +524,7 @@ async def delete_external_image_data_list(request: Request, image_hash_list: Lis
             error_string=str(e),
             http_status_code=500
         )
+
 
 
     

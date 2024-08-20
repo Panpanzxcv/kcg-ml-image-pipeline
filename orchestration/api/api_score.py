@@ -310,7 +310,7 @@ def list_rank_scores(
     max_score: float = Query(None, description="Maximum score for filtering"),
     time_interval: int = Query(None, description="Time interval in minutes or hours for filtering"),
     time_unit: str = Query("minutes", description="Time unit, either 'minutes' or 'hours'"),
-    random_sampling: bool = Query(True, description="Enable random sampling")
+    random_sampling: bool = Query(False, description="Enable random sampling")
 ):
     api_response_handler = ApiResponseHandlerV1(request)
     try:
