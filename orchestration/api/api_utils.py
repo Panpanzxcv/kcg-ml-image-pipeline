@@ -782,7 +782,83 @@ def insert_into_all_images_for_completed(image_data, dataset_id, all_images_coll
         print(f"Error inserting into all-images collection: {e}")
     
 
+
+def check_image_usage(request, image_hash):
+    """
+    Check if the image is used in a selection datapoint or has a tag assigned.
+    """
+    datapoint_usage = request.app.ranking_datapoints_collection.find_one({
+        "$or": [
+            {"image_1_metadata.file_hash": image_hash},
+            {"image_2_metadata.file_hash": image_hash}
+        ]
+    })
+
+    if datapoint_usage:
+        return False, "Image is used in a selection datapoint."
+
+    tag_assigned = request.app.image_tags_collection.find_one({
+        "image_hash": image_hash
+    })
+
+    if tag_assigned:
+        return False, "Image has a tag assigned."
+
+    return True, None
+
+def remove_from_additional_collections(request, image_hash):
+    """
+    Remove documents associated with the given image_hash or file_hash
+    from additional collections.
+    """
+    collections_to_remove = [
+        request.app.all_image_collection,
+        request.app.image_rank_scores_collection,
+        request.app.image_classifier_scores_collection,
+        request.app.image_sigma_scores_collection,
+        request.app.image_residuals_collection,
+        request.app.image_percentiles_collection,
+        request.app.image_residual_percentiles_collection,
+        request.app.image_rank_use_count_collection,
+        request.app.irrelevant_images_collection,  # This uses "file_hash" instead of "image_hash"
+        request.app.image_hashes_collection,
+    ]
+
+    for collection in collections_to_remove:
+        if collection == request.app.irrelevant_images_collection:
+            print(f"Removing documents with file_hash: {image_hash} from {collection.name}")
+            result = collection.delete_many({"file_hash": image_hash})
+            print(f"Deleted {result.deleted_count} documents from {collection.name}")
+        else:
+            print(f"Removing documents with image_hash: {image_hash} from {collection.name}")
+            result = collection.delete_many({"image_hash": image_hash})
+            print(f"Deleted {result.deleted_count} documents from {collection.name}")
+
+
+def delete_files_from_minio(minio_client, bucket_name, object_name):
+    """
+    Delete files from MinIO. This function will attempt to delete the main file
+    and associated files. If any file is missing or fails to delete, it will
+    silently continue with the next file.
+    """
+    files_to_delete = [
+        object_name,
+        f"{object_name.rsplit('.', 1)[0]}_clip_kandinsky.msgpack",
+        f"{object_name.rsplit('.', 1)[0]}_clip.msgpack",
+        f"{object_name.rsplit('.', 1)[0]}_data.msgpack",
+        f"{object_name.rsplit('.', 1)[0]}_embedding.msgpack",
+        f"{object_name.rsplit('.', 1)[0]}_vae_latent.msgpack",
+    ]
+
+    for file in files_to_delete:
+        try:
+            minio_client.remove_object(bucket_name, file)
+        except Exception:
+            # Silently continue if deletion fails
+            continue
+
 def uuid64_number_to_string(uuid_number):
     hex_string = uuid_number.to_bytes(8, 'big').hex()
     return hex_string[0:4] + '-' + hex_string[4:8] + '-' + hex_string[8:12] + '-' + hex_string[12:16]
+
 

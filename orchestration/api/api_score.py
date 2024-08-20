@@ -4,7 +4,7 @@ from fastapi import Request, APIRouter, HTTPException, Query
 from typing import Optional
 
 from pymongo import UpdateOne
-from orchestration.api.mongo_schemas import RankingScore, ResponseRankingScore, ListRankingScore
+from orchestration.api.mongo_schemas import RankingScore, ResponseRankingScore, ListRankingScore, ListOnlyRankingScore
 from .api_utils import ApiResponseHandler, ErrorCode, StandardSuccessResponse, WasPresentResponse, ApiResponseHandlerV1, StandardSuccessResponseV1
 
 router = APIRouter()
@@ -291,7 +291,7 @@ def get_image_rank_scores_by_model_id(
     )
     
 @router.get("/image-scores/scores/list-rank-scores",
-            description="Get image rank scores by rank id",
+            description="Get image rank scores by rank id with optional random sampling.",
             status_code=200,
             tags=["image scores"],  
             response_model=StandardSuccessResponseV1[ListRankingScore],  
@@ -309,7 +309,8 @@ def list_rank_scores(
     min_score: float = Query(None, description="Minimum score for filtering"),
     max_score: float = Query(None, description="Maximum score for filtering"),
     time_interval: int = Query(None, description="Time interval in minutes or hours for filtering"),
-    time_unit: str = Query("minutes", description="Time unit, either 'minutes' or 'hours'")
+    time_unit: str = Query("minutes", description="Time unit, either 'minutes' or 'hours'"),
+    random_sampling: bool = Query(False, description="Enable random sampling")
 ):
     api_response_handler = ApiResponseHandlerV1(request)
     try:
@@ -320,7 +321,7 @@ def list_rank_scores(
             delta = timedelta(minutes=time_interval) if time_unit == "minutes" else timedelta(hours=time_interval)
             threshold_time = current_time - delta
 
-        # Check if exist
+        # Build the query
         query = {"rank_model_id": rank_model_id}
         if image_source:
             query["image_source"] = image_source
@@ -342,14 +343,21 @@ def list_rank_scores(
         elif min_score:
             query['score'] = { '$gte': min_score }
         elif max_score:
-            query['score'] = { '$lte': min_score }
-            
-        # Fetch data from the database
-        items = list(request.app.image_rank_scores_collection\
-            .find(query)\
-            .sort(score_field, 1 if sort_order == 'asc' else -1)\
-            .skip(offset).limit(limit))
+            query['score'] = { '$lte': max_score }
+
+        # Modify behavior based on random_sampling parameter
+        if random_sampling:
+            query_filter = {"$match": query}
+            sampling_stage = {"$sample": {"size": limit}}
+            pipeline = [query_filter, sampling_stage]
+            items = list(request.app.image_rank_scores_collection.aggregate(pipeline))
+        else:
+            items = list(request.app.image_rank_scores_collection\
+                .find(query)\
+                .sort(score_field, 1 if sort_order == 'asc' else -1)\
+                .skip(offset).limit(limit))
         
+        # Remove the auto generated '_id' field and prepare the score data
         score_data = []
         for item in items:
             # Remove the auto generated '_id' field
@@ -359,6 +367,51 @@ def list_rank_scores(
         # Return a standardized success response with the score data
         return api_response_handler.create_success_response_v1(
             response_data={'scores': score_data},
+            http_status_code=200
+        )
+        
+    except Exception as e:
+        return api_response_handler.create_error_response_v1(
+            error_code=ErrorCode.OTHER_ERROR, 
+            error_string=str(e),
+            http_status_code=500
+        )
+
+
+@router.get("/image-scores/scores/get-image-rank-scores-by-hash",
+            description="Get all rank scores assigned to a specific image by its hash.",
+            status_code=200,
+            tags=["image scores"],  
+            response_model=StandardSuccessResponseV1[ListOnlyRankingScore], 
+            responses=ApiResponseHandlerV1.listErrors([422, 500]))
+async def get_image_rank_scores(
+    request: Request, 
+    image_hash: str
+):
+    api_response_handler = await ApiResponseHandlerV1.createInstance(request)
+    try:
+        # Build the query to fetch scores for the given image hash
+        query = {"image_hash": image_hash}
+
+        # Fetch the scores from the database
+        scores = list(request.app.image_rank_scores_collection.find(query))
+
+        # Prepare the response structure
+        score_list = []
+        for score in scores:
+            rank_model_id = score.get("rank_model_id")
+            if rank_model_id is not None:
+                # Create the desired response structure
+                score_entry = {
+                    "rank_model_id": rank_model_id,
+                    "score": score.get("score"),
+                    "sigma_score": score.get("sigma_score")
+                }
+                score_list.append(score_entry)
+        
+        # Return a standardized success response with the score data
+        return api_response_handler.create_success_response_v1(
+            response_data={"scores": score_list},
             http_status_code=200
         )
         

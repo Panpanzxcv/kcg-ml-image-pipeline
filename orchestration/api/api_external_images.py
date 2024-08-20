@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Body, Request, HTTPException, Query, status
 from typing import Optional
 from utility.path import separate_bucket_and_file_path
-from .api_utils import ApiResponseHandlerV1, StandardSuccessResponseV1, ErrorCode, WasPresentResponse, DeletedCount, validate_date_format, TagListForImages, TagCountResponse, TagListForImagesV1, insert_into_all_images, generate_uuid
+from .api_utils import ApiResponseHandlerV1, StandardSuccessResponseV1, ErrorCode, WasPresentResponse, DeletedCount, validate_date_format, TagListForImages, TagCountResponse, TagListForImagesV1, insert_into_all_images, generate_uuid,  check_image_usage, remove_from_additional_collections, delete_files_from_minio
 from .mongo_schemas import ExternalImageData, ImageHashRequest, ListExternalImageData, ListImageHashRequest, ExternalImageDataV1, ListExternalImageDataV1, ListDatasetV1, ListExternalImageDataWithSimilarityScore, Dataset, ListExternalImageDataV2, ListDataset
 from orchestration.api.mongo_schema.tag_schemas import ExternalImageTag, ListExternalImageTag, ImageTag, ListImageTag
 from typing import List
@@ -329,9 +329,11 @@ async def get_all_external_image_data_list_v1(
             tags=["external-images"],  
             response_model=StandardSuccessResponseV1[List[ExternalImageData]],  
             responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
-async def get_external_image_list_without_extracts(request: Request, dataset: str=None, size: int = None):
+async def get_external_image_list_without_extracts(request: Request, dataset: str = None, size: int = None):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
+    
     try:
+        # Base query for external images
         query = {}
         if dataset:
             query['dataset'] = dataset
@@ -341,30 +343,33 @@ async def get_external_image_list_without_extracts(request: Request, dataset: st
             {"$match": query},
             {
                 "$lookup": {
-                    "from": "extracts_collection",
-                    "localField": "image_hash",  # Adjust field name as necessary
-                    "foreignField": "source_image_hash",  # Adjust field name as necessary
-                    "as": "extracts"
+                    "from": "extracts",  # Name of the extracts collection
+                    "localField": "image_hash",     # The field in external_images_collection
+                    "foreignField": "source_image_hash",  # The field in extracts_collection
+                    "as": "extracts"                # The array to store the joined results
                 }
             },
             {"$match": {"extracts": {"$size": 0}}},  # Filter to include only those without extracts
         ]
 
+        # Apply sampling if the size parameter is provided
         if size:
             aggregation_pipeline.append({"$sample": {"size": size}})
 
-
+        # Execute the aggregation
         image_data_list = list(request.app.external_images_collection.aggregate(aggregation_pipeline))
 
+        # Remove '_id' field from results
         for image_data in image_data_list:
-            image_data.pop('_id', None)  # Remove the auto-generated field
+            image_data.pop('_id', None)
 
         return api_response_handler.create_success_response_v1(
             response_data={"data": image_data_list},
-            http_status_code=200  
+            http_status_code=200
         )
-    
+
     except Exception as e:
+        # Return a structured error response
         return api_response_handler.create_error_response_v1(
             error_code=ErrorCode.OTHER_ERROR, 
             error_string=str(e),
@@ -372,7 +377,7 @@ async def get_external_image_list_without_extracts(request: Request, dataset: st
         )
 
 @router.delete("/external-images/delete-external-image", 
-            description="Delete an external image data",
+            description="Delete an external image data if it's not used in a selection datapoint or has a tag assigned",
             tags=["external-images"],  
             response_model=StandardSuccessResponseV1[WasPresentResponse],  
             responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
@@ -380,11 +385,65 @@ async def delete_external_image_data(request: Request, image_hash: str):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
 
     try:
-        result = request.app.external_images_collection.delete_one({
-            "image_hash": image_hash
-        })
-        # Return a standard response with wasPresent set to true if there was a deletion
-        return api_response_handler.create_success_delete_response_v1(result.deleted_count != 0)
+        # Check if the image is used in ranking datapoints or has a tag assigned
+        is_safe_to_delete, error_message = check_image_usage(request, image_hash)
+
+        if not is_safe_to_delete:
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS,
+                error_string=error_message,
+                http_status_code=422
+            )
+
+        # Fetch the image document to get the file path before deletion
+        image_document = request.app.external_images_collection.find_one({"image_hash": image_hash})
+        if not image_document:
+            return api_response_handler.create_success_delete_response_v1(
+                False, 
+                http_status_code=200
+            )
+
+        # Extract the file path
+        file_path = image_document.get("file_path")
+        if not file_path:
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS,
+                error_string="No valid file path found for the image.",
+                http_status_code=422
+            )
+
+        # Remove the image data from additional collections
+        remove_from_additional_collections(request, image_hash)
+
+        path_parts = file_path.split("/", 1)
+        if len(path_parts) < 2:
+            print(f"Error: Path format is not correct for file_path: {file_path}")
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS,
+                error_string="The file path format is incorrect; expected 'bucket_name/object_name'.",
+                http_status_code=422
+            )
+
+        bucket_name = path_parts[0]
+        object_name = path_parts[1]
+
+        # Delete the related files from MinIO
+        if bucket_name and object_name:
+            delete_files_from_minio(request.app.minio_client, bucket_name, object_name)
+
+        # Finally, delete the image from external_images_collection
+        result = request.app.external_images_collection.delete_one({"image_hash": image_hash})
+
+        if result.deleted_count == 0:
+            return api_response_handler.create_success_delete_response_v1(
+                False, 
+                http_status_code=200
+            )
+
+        return api_response_handler.create_success_delete_response_v1(
+            True, 
+            http_status_code=200
+        )
     
     except Exception as e:
         return api_response_handler.create_error_response_v1(
@@ -393,23 +452,69 @@ async def delete_external_image_data(request: Request, image_hash: str):
             http_status_code=500
         )
 
-    
+
+
+
+
 
 @router.delete("/external-images/delete-external-image-list", 
-            description="Delete an external image data list",
+            description="Delete a list of external image data if they are not used in a selection datapoint or have a tag assigned",
             tags=["external-images"],  
             response_model=StandardSuccessResponseV1[DeletedCount],  
-            responses=ApiResponseHandlerV1.listErrors([404,422, 500]))
-async def delete_external_image_data_list(request: Request, image_hash_list:List[str] ):
+            responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
+async def delete_external_image_data_list(request: Request, image_hash_list: List[str]):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
 
     try:
         deleted_count = 0
         for image_hash in image_hash_list:
-            result = request.app.external_images_collection.delete_one({
-                "image_hash": image_hash
-            })
-            
+            # Use the helper function to check image usage
+            is_safe_to_delete, error_message = check_image_usage(request, image_hash)
+
+            if not is_safe_to_delete:
+                return api_response_handler.create_error_response_v1(
+                    error_code=ErrorCode.INVALID_PARAMS,
+                    error_string=error_message,
+                    http_status_code=422
+                )
+
+            # Fetch the image document to get the file path before deletion
+            image_document = request.app.external_images_collection.find_one({"image_hash": image_hash})
+            if not image_document:
+                continue  # Skip this image if it doesn't exist
+
+            # Extract the file path
+            file_path = image_document.get("file_path")
+            if not file_path:
+                return api_response_handler.create_error_response_v1(
+                    error_code=ErrorCode.INVALID_PARAMS,
+                    error_string="No valid file path found for the image.",
+                    http_status_code=422
+                )
+
+            # Remove the image data from additional collections
+            remove_from_additional_collections(request, image_hash)
+
+            path_parts = file_path.split("/", 1)
+            if len(path_parts) < 2:
+                print(f"Error: Path format is not correct for file_path: {file_path}")
+                return api_response_handler.create_error_response_v1(
+                    error_code=ErrorCode.INVALID_PARAMS,
+                    error_string="The file path format is incorrect; expected 'bucket_name/object_name'.",
+                    http_status_code=422
+                )
+
+            bucket_name = path_parts[0]
+            object_name = path_parts[1]
+
+
+            # Delete the related files from MinIO
+            if bucket_name and object_name:
+                delete_files_from_minio(request.app.minio_client, bucket_name, object_name)
+
+            # Perform the deletion in MongoDB as the last step
+            result = request.app.external_images_collection.delete_one({"image_hash": image_hash})
+
             if result.deleted_count > 0:
                 deleted_count += 1
             
@@ -424,6 +529,9 @@ async def delete_external_image_data_list(request: Request, image_hash_list:List
             error_string=str(e),
             http_status_code=500
         )
+
+
+
     
 
 @router.put("/external-images/add-task-attributes-v1",

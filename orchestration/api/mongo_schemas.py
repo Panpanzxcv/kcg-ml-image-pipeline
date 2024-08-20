@@ -311,6 +311,15 @@ class ResponseRankingScore(BaseModel):
 class ListRankingScore(BaseModel):
     scores: List[ResponseRankingScore]  
 
+class OnlyRankingScore(BaseModel):
+    rank_model_id: int
+    score: float    
+    sigma_score: float
+
+class ListOnlyRankingScore(BaseModel):
+    scores: List[OnlyRankingScore]
+
+
 class ClassifierScore(BaseModel):
     uuid: Union[str, None]
     classifier_id: int
