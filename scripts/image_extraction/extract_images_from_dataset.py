@@ -171,7 +171,7 @@ class ImageExtractionPipeline:
 
     def get_classifier_model(self, tag_name):
         input_path = f"environmental/models/classifiers/{tag_name}/"
-        file_suffix = "elm-regression-clip-h_all_resolutions.pth"
+        file_suffix = "elm-regression-clip-h-all_resolutions.pth"
 
         # Use the MinIO client's list_objects method directly with recursive=True
         model_files = [obj.object_name for obj in self.minio_client.list_objects('datasets', prefix=input_path, recursive=True) if obj.object_name.endswith(file_suffix)]
