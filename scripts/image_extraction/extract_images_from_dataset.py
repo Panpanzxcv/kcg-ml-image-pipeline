@@ -243,7 +243,7 @@ class ImageExtractionPipeline:
 
         # filter the images based on
         index=0 
-        for extract in tqdm(extracted_images):
+        for source_image, extract in tqdm(external_images, extracted_images):
             image = extract["image"]
             image_data = extract["image_data"]
 
@@ -263,19 +263,17 @@ class ImageExtractionPipeline:
             del pixel_values
             torch.cuda.empty_cache()
 
-            # store data
-            source_image_data= external_images[index]
-            
+
             data={
                 "image_hash" : hashlib.md5(image_data.getvalue()).hexdigest(),
                 "image_uuid": str(uuid.uuid4()),
                 "image": image,
                 "clip_vector": clip_vector,
                 "vae_latent" : vae_latent,
-                "source_image_hash": source_image_data["image_hash"],
-                "source_image_uuid": source_image_data["uuid"],
+                "source_image_hash": source_image["image_hash"],
+                "source_image_uuid": source_image["uuid"],
                 "extraction_policy": extraction_policy,
-                "dataset": source_image_data["dataset"]
+                "dataset": source_image["dataset"]
             }
 
             extract_data.append(data)
@@ -382,7 +380,7 @@ class ImageExtractionPipeline:
             extracts= extract_square_images(self.minio_client, filtered_batch, self.target_size)
 
             # upload the extracts to minio and mongoDB
-            extract_data= self.upload_extracts(external_images= images_batch,
+            extract_data= self.upload_extracts(external_images= filtered_batch,
                                                extracted_images= extracts)
             
             processed_images+= len(extract_data)
