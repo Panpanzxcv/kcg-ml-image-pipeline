@@ -380,7 +380,7 @@ class ImageExtractionPipeline:
             # filtering irrelevant images
             futures=[]
             with ThreadPoolExecutor(max_workers=10) as executor:
-                for image in images_batch:
+                for image in tqdm(images_batch):
                     futures.append(executor.submit(self.load_clip_vector, image))
             
             # Collect results as they complete
