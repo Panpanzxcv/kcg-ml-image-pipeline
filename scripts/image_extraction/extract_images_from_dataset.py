@@ -169,7 +169,7 @@ class ImageExtractionPipeline:
 
     def get_classifier_model(self, tag_name):
         input_path = f"environmental/models/classifiers/{tag_name}/"
-        file_suffix = "elm-regression-clip-h-all_resolutions.pth"
+        file_suffix = "elm-regression-clip-h.pth"
 
         # Use the MinIO client's list_objects method directly with recursive=True
         model_files = [obj.object_name for obj in self.minio_client.list_objects('datasets', prefix=input_path, recursive=True) if obj.object_name.endswith(file_suffix)]
@@ -239,7 +239,7 @@ class ImageExtractionPipeline:
 
         # filter the images based on
         index=0 
-        for extract in tqdm(extracted_images):
+        for extract in extracted_images:
             image = extract["image"]
             image_data = extract["image_data"]
 
@@ -247,10 +247,8 @@ class ImageExtractionPipeline:
             with torch.no_grad():
                 clip_vector= self.clip.get_image_features(image).to(dtype=torch.float32)
 
-            source_image_data= external_images[index]
-
             if not self.is_filtered(clip_vector):
-                print(f"image file path {source_image_data['file_path']}")
+                pass
 
             index+=1 
             # filter the image if it's not useful
