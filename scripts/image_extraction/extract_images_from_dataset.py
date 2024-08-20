@@ -379,7 +379,7 @@ class ImageExtractionPipeline:
            
             # filtering irrelevant images
             futures=[]
-            with ThreadPoolExecutor(max_workers=20) as executor:
+            with ThreadPoolExecutor(max_workers=10) as executor:
                 for image in images_batch:
                     futures.append(executor.submit(self.load_clip_vector, image))
             
