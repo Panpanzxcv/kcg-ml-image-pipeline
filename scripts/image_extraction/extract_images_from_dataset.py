@@ -204,7 +204,7 @@ class ImageExtractionPipeline:
         print("Filtering irrelevant images")
         for tag, model in tqdm(self.irrelevant_image_models.items()):
             with torch.no_grad():
-                classifier_scores = model.classify(clip_vectors)
+                classifier_scores = model.classify(clip_vectors).squeeze()
             
             # Create a mask for filtering based on classifier scores
             mask = (classifier_scores < 3) & (classifier_scores < self.defect_threshold)
@@ -219,7 +219,7 @@ class ImageExtractionPipeline:
         print("Filtering based on defects")
         for tag, model in tqdm(self.defect_models.items()):
             with torch.no_grad():
-                classifier_scores = model.classify(clip_vectors) 
+                classifier_scores = model.classify(clip_vectors).squeeze()
             
             # Create a mask for filtering based on classifier scores
             mask = (classifier_scores < 3) & (classifier_scores < self.defect_threshold)
@@ -234,7 +234,7 @@ class ImageExtractionPipeline:
         print("Filtering for images with relevant content")
         for tag, model in tqdm(self.topic_models.items()):
             with torch.no_grad():
-                classifier_scores = model.classify(clip_vectors)
+                classifier_scores = model.classify(clip_vectors).squeeze()
             
             # Create a mask for filtering based on classifier scores
             mask = (classifier_scores >= self.min_classifier_score) & (classifier_scores < 3)
