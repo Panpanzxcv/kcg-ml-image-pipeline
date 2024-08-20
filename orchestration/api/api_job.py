@@ -278,10 +278,7 @@ async def delete_completed_job(request: Request, uuid: str):
                 http_status_code=422
             )
 
-        # Delete the image from MongoDB collections
-        request.app.completed_jobs_collection.delete_one({"uuid": uuid})
-
-        # Also remove the image data from other related collections
+        # Remove the image data from specified collections first
         collections_to_remove = [
             request.app.image_rank_scores_collection,
             request.app.image_classifier_scores_collection,
@@ -319,6 +316,9 @@ async def delete_completed_job(request: Request, uuid: str):
             for file in associated_files:
                 cmd.remove_an_object(request.app.minio_client, bucket_name, file)
 
+        # Finally, delete the image from completed_jobs_collection
+        request.app.completed_jobs_collection.delete_one({"uuid": uuid})
+
         return api_response_handler.create_success_delete_response_v1(
             True,
             http_status_code=200,
@@ -330,6 +330,7 @@ async def delete_completed_job(request: Request, uuid: str):
             error_string=str(e),
             http_status_code=500,
         )
+
 
 
 

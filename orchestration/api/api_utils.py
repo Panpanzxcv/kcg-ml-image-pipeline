@@ -786,3 +786,26 @@ def insert_into_all_images_for_completed(image_data, dataset_id, all_images_coll
     except Exception as e:
         print(f"Error inserting into all-images collection: {e}")
     
+
+def check_image_usage(request, image_hash):
+    """
+    Check if the image is used in a selection datapoint or has a tag assigned.
+    """
+    datapoint_usage = request.app.ranking_datapoints_collection.find_one({
+        "$or": [
+            {"image_1_metadata.file_hash": image_hash},
+            {"image_2_metadata.file_hash": image_hash}
+        ]
+    })
+
+    if datapoint_usage:
+        return False, "Image is used in a selection datapoint."
+
+    tag_assigned = request.app.image_tags_collection.find_one({
+        "image_hash": image_hash
+    })
+
+    if tag_assigned:
+        return False, "Image has a tag assigned."
+
+    return True, None

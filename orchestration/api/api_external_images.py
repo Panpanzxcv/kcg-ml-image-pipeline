@@ -424,15 +424,6 @@ async def delete_external_image_data(request: Request, image_hash: str):
                 http_status_code=422
             )
 
-        # Perform the deletion in MongoDB
-        result = request.app.external_images_collection.delete_one({"image_hash": image_hash})
-
-        if result.deleted_count == 0:
-            return api_response_handler.create_success_delete_response_v1(
-                False, 
-                http_status_code=200
-            )
-
         # Remove the image data from specified collections
         collections_to_remove = [
             request.app.image_rank_scores_collection,
@@ -463,6 +454,15 @@ async def delete_external_image_data(request: Request, image_hash: str):
             for file in associated_files:
                 cmd.remove_an_object(request.app.minio_client, bucket_name, file)
 
+        # Finally, delete the image from the external_images_collection
+        result = request.app.external_images_collection.delete_one({"image_hash": image_hash})
+
+        if result.deleted_count == 0:
+            return api_response_handler.create_success_delete_response_v1(
+                False, 
+                http_status_code=200
+            )
+
         return api_response_handler.create_success_delete_response_v1(
             True, 
             http_status_code=200
@@ -477,7 +477,7 @@ async def delete_external_image_data(request: Request, image_hash: str):
 
 
 
-    
+
 
 @router.delete("/external-images/delete-external-image-list", 
             description="Delete a list of external image data if they are not used in a selection datapoint or have a tag assigned",
@@ -531,40 +531,40 @@ async def delete_external_image_data_list(request: Request, image_hash_list: Lis
                     http_status_code=422
                 )
 
-            # Perform the deletion in MongoDB
+            # Remove the image data from specified collections
+            collections_to_remove = [
+                request.app.image_rank_scores_collection,
+                request.app.image_classifier_scores_collection,
+                request.app.image_rank_use_count_collection,
+                request.app.irrelevant_images_collection,  # This uses "file_hash" instead of "image_hash"
+                request.app.image_hashes_collection,
+            ]
+
+            for collection in collections_to_remove:
+                if collection == request.app.irrelevant_images_collection:
+                    collection.delete_many({"file_hash": image_hash})
+                else:
+                    collection.delete_many({"image_hash": image_hash})
+
+            # Correctly split the file path to get the bucket name and object name
+            path_parts = file_path.split("/", 1)
+            bucket_name = path_parts[0] if len(path_parts) > 0 else None
+            object_name = path_parts[1] if len(path_parts) > 1 else None
+
+            # Delete the related files from MinIO
+            if bucket_name and object_name:
+                cmd.remove_an_object(request.app.minio_client, bucket_name, object_name)
+                # Delete associated files with the same prefix (e.g., .jpg, .msgpack)
+                associated_files = [
+                    f"{object_name.rsplit('.', 1)[0]}_clip_kandinsky.msgpack"
+                ]
+                for file in associated_files:
+                    cmd.remove_an_object(request.app.minio_client, bucket_name, file)
+            
+            # Perform the deletion in MongoDB as the last step
             result = request.app.external_images_collection.delete_one({"image_hash": image_hash})
 
             if result.deleted_count > 0:
-                # Remove the image data from specified collections
-                collections_to_remove = [
-                    request.app.image_rank_scores_collection,
-                    request.app.image_classifier_scores_collection,
-                    request.app.image_rank_use_count_collection,
-                    request.app.irrelevant_images_collection,  # This uses "file_hash" instead of "image_hash"
-                    request.app.image_hashes_collection,
-                ]
-
-                for collection in collections_to_remove:
-                    if collection == request.app.irrelevant_images_collection:
-                        collection.delete_many({"file_hash": image_hash})
-                    else:
-                        collection.delete_many({"image_hash": image_hash})
-
-                # Correctly split the file path to get the bucket name and object name
-                path_parts = file_path.split("/", 1)
-                bucket_name = path_parts[0] if len(path_parts) > 0 else None
-                object_name = path_parts[1] if len(path_parts) > 1 else None
-
-                # Delete the related files from MinIO
-                if bucket_name and object_name:
-                    cmd.remove_an_object(request.app.minio_client, bucket_name, object_name)
-                    # Delete associated files with the same prefix (e.g., .jpg, .msgpack)
-                    associated_files = [
-                        f"{object_name.rsplit('.', 1)[0]}_clip_kandinsky.msgpack"
-                    ]
-                    for file in associated_files:
-                        cmd.remove_an_object(request.app.minio_client, bucket_name, file)
-                
                 deleted_count += 1
             
         return api_response_handler.create_success_response_v1(
@@ -578,6 +578,7 @@ async def delete_external_image_data_list(request: Request, image_hash_list: Lis
             error_string=str(e),
             http_status_code=500
         )
+
 
     
 

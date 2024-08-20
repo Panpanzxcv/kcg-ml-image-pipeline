@@ -407,15 +407,6 @@ async def delete_extract_image_data(request: Request, image_hash: str):
                 http_status_code=422
             )
 
-        # Perform the deletion in MongoDB
-        result = request.app.extracts_collection.delete_one({"image_hash": image_hash})
-
-        if result.deleted_count == 0:
-            return api_response_handler.create_success_delete_response_v1(
-                False, 
-                http_status_code=200
-            )
-
         # Remove the image data from specified collections
         collections_to_remove = [
             request.app.image_rank_scores_collection,
@@ -447,6 +438,15 @@ async def delete_extract_image_data(request: Request, image_hash: str):
             for file in associated_files:
                 cmd.remove_an_object(request.app.minio_client, bucket_name, file)
 
+        # Finally, delete the image from the extracts_collection
+        result = request.app.extracts_collection.delete_one({"image_hash": image_hash})
+
+        if result.deleted_count == 0:
+            return api_response_handler.create_success_delete_response_v1(
+                False, 
+                http_status_code=200
+            )
+
         return api_response_handler.create_success_delete_response_v1(
             True, 
             http_status_code=200
@@ -458,6 +458,7 @@ async def delete_extract_image_data(request: Request, image_hash: str):
             error_string=str(e),
             http_status_code=500
         )
+
 
 
 @router.delete("/extracts/delete-extract-dataset", 
