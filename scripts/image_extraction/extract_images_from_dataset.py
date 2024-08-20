@@ -367,7 +367,7 @@ class ImageExtractionPipeline:
         processed_images= 0
         print("Extracting images.......")
         num_batches= math.ceil(total_images / self.batch_size)
-        
+
         for batch_iter in range(0, num_batches):
             print(f"processing batch {batch_iter}")
             # getting start and end index for the batch
@@ -379,7 +379,7 @@ class ImageExtractionPipeline:
            
             # filtering irrelevant images
             futures=[]
-            with ThreadPoolExecutor(max_workers=50) as executor:
+            with ThreadPoolExecutor(max_workers=20) as executor:
                 for image in images_batch:
                     futures.append(executor.submit(self.load_clip_vector, image))
             
