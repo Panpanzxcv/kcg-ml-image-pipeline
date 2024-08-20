@@ -380,6 +380,7 @@ async def set_image_classifier_score(request: Request, classifier_score: Classif
         image_hash = job_data['task_output_file_dict']['output_file_hash']
         task_type = job_data['task_type']
         image_uuid = job_data['image_uuid']
+        print(image_uuid)
 
         # Fetch tag_id from classifier_models_collection
         classifier_data = request.app.classifier_models_collection.find_one({"classifier_id": classifier_score.classifier_id}, {"tag_id": 1})
@@ -423,6 +424,7 @@ async def set_image_classifier_score(request: Request, classifier_score: Classif
             # Insert new score
             insert_result = request.app.image_classifier_scores_collection.insert_one(new_score_data)
             new_score_data['_id'] = str(insert_result.inserted_id)
+            new_score_data.pop('_id', None)
 
         return api_response_handler.create_success_response_v1(
             response_data=new_score_data,
