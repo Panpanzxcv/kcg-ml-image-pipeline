@@ -373,8 +373,7 @@ class ApiResponseHandler:
 
      
 
-
-class StandardSuccessResponseV1(BaseModel, Generic[T]):
+class BaseStandardResponseV1(BaseModel):
     request_error_string: str = ""
     request_error_code: int = 0
     request_url: str
@@ -384,27 +383,25 @@ class StandardSuccessResponseV1(BaseModel, Generic[T]):
     request_time_start: datetime 
     request_time_finished: datetime
     request_response_code: int 
+
+class StandardSuccessResponseV1(BaseStandardResponseV1, Generic[T]):
     response: T 
 
 
-class StandardErrorResponseV1(BaseModel):
-    request_error_string: str = ""
-    request_error_code: int = -1
-    request_url: str
-    request_dictionary: dict 
-    request_method: str
-    request_complete_time: float
-    request_time_start: str 
-    request_time_finished: str
-    request_response_code: int 
+class StandardErrorResponseV1(BaseStandardResponseV1):
+    pass
 
      
 class ApiResponseHandlerV1:
-    def __init__(self, request: Request, body_data: Optional[Dict[str, Any]] = None):
+    def __init__(self, request: Request, body_data: Optional[Dict[str, Any]] = None, _created_with_helper=False):
         self.request = request
         self.url = str(request.url)
         self.start_time = datetime.now() 
         self.query_params = dict(request.query_params)
+
+        # At some point this must be used to throw errors if the instance is not created using a helper method.
+        if _created_with_helper is False:
+            pass
 
         # Parse the URL to extract and store the path
         parsed_url = urlparse(self.url)
@@ -423,13 +420,13 @@ class ApiResponseHandlerV1:
             body_string = body.decode('utf-8')
             body_dictionary = json.loads(body_string)
 
-        instance = ApiResponseHandlerV1(request, body_dictionary)
+        instance = ApiResponseHandlerV1(request, body_dictionary, _created_with_helper=True)
         return instance
     
     # In middlewares, this must be called instead of "createInstance", as "createInstance" may hang trying to get the request body.
     @staticmethod
     def createInstanceWithBody(request: Request, body_data: Dict[str, Any]):
-        instance = ApiResponseHandlerV1(request, body_data)
+        instance = ApiResponseHandlerV1(request, body_data, _created_with_helper=True)
         return instance
 
     
@@ -443,70 +440,68 @@ class ApiResponseHandlerV1:
             repsonse[err] = {"model": StandardErrorResponseV1}
         return repsonse
 
-    def create_success_response_v1(
+    def _create_metadata_and_process_headers(
         self,
-        response_data: dict,
-        http_status_code: int, 
-        headers: dict = {"Cache-Control": "no-store"},
+        http_status_code: int,
+        headers: dict,
     ):
-        # Validate the provided HTTP status code
-        if not 200 <= http_status_code < 300:
-            raise ValueError("Invalid HTTP status code for a success response. Must be between 200 and 299.")
+        if headers.get("Cache-Control") is None:
+            headers["Cache-Control"] = "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
 
-        response_content = {
+        return {
             "request_error_string": '',
-            "request_error_code": 0, 
-            "request_url": self.url_path,
-            "request_dictionary": self.request_data,  # Or adjust how you access parameters
-            "request_method": self.request.method,
-            "request_complete_time": str(self._elapsed_time()),
-            "request_time_start": self.start_time.isoformat(),  
-            "request_time_finished": datetime.now().isoformat(), 
-            "request_response_code": http_status_code,
-            "response": response_data
-        }
-        return PrettyJSONResponse(status_code=http_status_code, content=response_content, headers=headers)
-
-
-    def create_success_delete_response_v1(
-            self, 
-            wasPresent: bool, 
-            http_status_code: int,
-            headers: dict = {"Cache-Control": "no-store"} ):
-        """Construct a success response for deletion operations."""
-        response_content = {
-            "request_error_string": '',
-            "request_error_code": 0, 
+            "request_error_code": 0,
             "request_url": self.url_path,
             "request_dictionary": self.request_data,
             "request_method": self.request.method,
             "request_complete_time": str(self._elapsed_time()),
             "request_time_start": self.start_time.isoformat(),
             "request_time_finished": datetime.now().isoformat(),
-            "request_response_code": http_status_code,
-            "response": {"wasPresent": wasPresent}
+            "request_response_code": http_status_code
         }
+
+    def create_success_response_v1(
+        self,
+        response_data: dict,
+        http_status_code: int, 
+        headers: dict = {},
+    ):
+        # Validate the provided HTTP status code
+        if not 200 <= http_status_code < 300:
+            raise ValueError("Invalid HTTP status code for a success response. Must be between 200 and 299.")
+        
+        response_content = self._create_metadata_and_process_headers(http_status_code, headers)
+        response_content["response"] = response_data
+
+        return PrettyJSONResponse(status_code=http_status_code, content=response_content, headers=headers)
+
+
+    def create_success_delete_response_v1(
+        self, 
+        wasPresent: bool, 
+        http_status_code: int = 200,
+        headers: dict = {}
+    ):
+        response_content = self._create_metadata_and_process_headers(http_status_code, headers)
+        response_content["response"] = {"wasPresent": wasPresent}
+
         return PrettyJSONResponse(status_code=http_status_code, content=response_content, headers=headers)
 
     def create_error_response_v1(
-            self,
-            error_code: ErrorCode,
-            error_string: str,
-            http_status_code: int,
-            headers: dict = {"Cache-Control": "no-store"},
-        ):
+        self,
+        error_code: ErrorCode,
+        error_string: str,
+        http_status_code: int,
+        headers: dict = {},
+    ):
+            # Validate the provided HTTP status code
+            if not 400 <= http_status_code < 599:
+                raise ValueError("Invalid HTTP status code for a success response. Must be between 400 and 599.")
             
-            response_content = {
-                "request_error_string": error_string,
-                "request_error_code": error_code.value,  # Using .name for the enum member name
-                "request_url": self.url_path,
-                "request_dictionary": self.request_data,  # Convert query params to a more usable dict format
-                "request_method": self.request.method,
-                "request_complete_time": str(self._elapsed_time()),
-                "request_time_start": self.start_time.isoformat(),
-                "request_time_finished": datetime.now().isoformat(),
-                "request_response_code": http_status_code
-            }
+            response_content = self._create_metadata_and_process_headers(http_status_code, headers)
+            response_content["request_error_string"] = error_string
+            response_content["request_error_code"] = error_code.value
+            
             return PrettyJSONResponse(status_code=http_status_code, content=response_content, headers=headers)
 
             
@@ -787,6 +782,7 @@ def insert_into_all_images_for_completed(image_data, dataset_id, all_images_coll
         print(f"Error inserting into all-images collection: {e}")
     
 
+
 def check_image_usage(request, image_hash):
     """
     Check if the image is used in a selection datapoint or has a tag assigned.
@@ -860,3 +856,9 @@ def delete_files_from_minio(minio_client, bucket_name, object_name):
         except Exception:
             # Silently continue if deletion fails
             continue
+
+def uuid64_number_to_string(uuid_number):
+    hex_string = uuid_number.to_bytes(8, 'big').hex()
+    return hex_string[0:4] + '-' + hex_string[4:8] + '-' + hex_string[8:12] + '-' + hex_string[12:16]
+
+

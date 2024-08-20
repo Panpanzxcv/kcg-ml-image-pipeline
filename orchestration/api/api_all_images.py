@@ -9,7 +9,7 @@ from .api_utils import PrettyJSONResponse, StandardSuccessResponseV1, ApiRespons
 from .api_ranking import get_image_rank_use_count
 import os
 from .api_utils import find_or_create_next_folder_and_index
-from orchestration.api.mongo_schema.all_images_schemas import AllImagesResponse, ListAllImagesResponse
+from orchestration.api.mongo_schema.all_images_schemas import AllImagesHelpers, AllImagesResponse, ListAllImagesResponse
 import io
 from typing import List
 from PIL import Image
@@ -101,10 +101,7 @@ async def list_all_images(
 
         print(f"Number of images found: {len(images)}")
 
-        for image in images:
-            image.pop("_id", None)  # Remove the MongoDB ObjectId
-            if 'uuid' in image:
-                image['uuid'] = str(image['uuid'])  # Convert uuid to string
+        AllImagesHelpers.clean_image_list_for_api_response(images)
 
         return response_handler.create_success_response_v1(
             response_data={"images": images},
@@ -139,7 +136,7 @@ async def get_image_by_hash(request: Request, image_hash: str):
                 http_status_code=404
             )
         
-        image_data.pop('_id', None)
+        AllImagesHelpers.clean_image_for_api_response(image_data)
         # Return the found image data
         return api_response_handler.create_success_response_v1(
             response_data=image_data,
