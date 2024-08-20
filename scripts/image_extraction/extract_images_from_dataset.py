@@ -367,6 +367,7 @@ class ImageExtractionPipeline:
         processed_images= 0
         print("Extracting images.......")
         num_batches= math.ceil(total_images / self.batch_size)
+        
         for batch_iter in range(0, num_batches):
             print(f"processing batch {batch_iter}")
             # getting start and end index for the batch
@@ -385,7 +386,8 @@ class ImageExtractionPipeline:
             # Collect results as they complete
             clip_vectors=[]
             images_batch=[]
-            for future in as_completed(futures):
+            print("Loading clip vectors for the image batch")
+            for future in tqdm(as_completed(futures)):
                 try:
                     image_data, clip_vector = future.result()
                     clip_vectors.append(clip_vector)
