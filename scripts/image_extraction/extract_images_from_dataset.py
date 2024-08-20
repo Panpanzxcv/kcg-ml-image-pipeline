@@ -103,7 +103,6 @@ class ImageExtractionPipeline:
         self.device = torch.device(device)
 
         # models
-        self.quality_models= {}
         self.topic_models= {}
         self.irrelevant_image_models= {}
         self.defect_models= {}
@@ -115,29 +114,12 @@ class ImageExtractionPipeline:
 
     def load_models(self):
         try:
-            print(f"Load all rank models")
-            rank_model_list = request.http_get_ranking_model_list()
-
-            for rank_info in rank_model_list:
-                ranking_model_type = rank_info["model_type"]
-                rank_id = rank_info["rank_id"]
-
-                if  ranking_model_type != "elm-v1" or rank_id not in [0,3,1]:
-                    continue
-
-                rank_id = rank_info["rank_id"]
-                model_path = rank_info["model_path"]
-                rank_model= None
-
-                rank_model = load_scoring_model(self.minio_client, rank_id, model_path, self.device)
-                self.quality_models[rank_id]= rank_model
-            
             # load topic and defect models
             print("loading the classifier models")
             tags= request.http_get_tag_list()
             tag_names= [tag['tag_string'] for tag in tags]
             classifier_model= None
-            target_tags=["game", "perspective"]
+            target_tags=["game", "perspective", "environmental"]
 
             for tag in tag_names:
                 if tag.startswith("defect"):
