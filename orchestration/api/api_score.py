@@ -22,6 +22,8 @@ async def set_image_rank_score(request: Request, ranking_score: RankingScore):
     if not image_data:
         raise HTTPException(status_code=404, detail="Image with the given hash not found in completed jobs collection.")
 
+    image_uuid = image_data['image_uuid']
+
     # Check if the score already exists in image_rank_scores_collection
     query = {"image_hash": ranking_score.image_hash, "rank_model_id": ranking_score.rank_model_id}
     count = request.app.image_rank_scores_collection.count_documents(query)
@@ -31,6 +33,7 @@ async def set_image_rank_score(request: Request, ranking_score: RankingScore):
     # Add the image_source property set to "generated_image"
     ranking_score_data = ranking_score.dict()
     ranking_score_data['image_source'] = "generated_image"
+    ranking_score_data['image_uuid'] = image_uuid
 
     # Insert the new ranking score
     request.app.image_rank_scores_collection.insert_one(ranking_score_data)
@@ -113,6 +116,8 @@ async def set_image_rank_score(
             )
         image_hash = image_data['image_hash']
 
+    image_uuid = image_data['image_uuid']    
+
     # Check if the score already exists in image_rank_scores_collection
     query = {
         "uuid": ranking_score.uuid,
@@ -132,6 +137,7 @@ async def set_image_rank_score(
     ranking_score_data['image_source'] = image_source
     ranking_score_data['image_hash'] = image_hash
     ranking_score_data["creation_time"] = datetime.utcnow().isoformat() 
+    ranking_score_data['image_uuid'] = image_uuid
     request.app.image_rank_scores_collection.insert_one(ranking_score_data)
 
     ranking_score_data.pop('_id', None)

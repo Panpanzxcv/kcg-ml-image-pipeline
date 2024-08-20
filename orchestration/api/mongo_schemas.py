@@ -379,6 +379,7 @@ class ClassifierScoreV1(BaseModel):
     tag_id: int
     score: float
     creation_time: Union[str, None] = None
+    image_uuid: Union[int, None]
 
     def to_dict(self):
         return {
@@ -388,7 +389,8 @@ class ClassifierScoreV1(BaseModel):
             "image_hash": self.image_hash,
             "tag_id": self.tag_id,
             "score": self.score,
-            "creation_time" : self.creation_time
+            "creation_time" : self.creation_time,
+            "image_uuid": self.image_uuid
         }
 
 class ImageResolution(BaseModel):
