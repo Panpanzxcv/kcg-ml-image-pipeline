@@ -119,7 +119,7 @@ class ImageExtractionPipeline:
             tags= request.http_get_tag_list()
             tag_names= [tag['tag_string'] for tag in tags]
             classifier_model= None
-            target_tags=["game", "perspective", "environmental"]
+            target_tags=["game", "perspective"]
 
             for tag in tag_names:
                 if tag.startswith("defect"):
@@ -216,7 +216,7 @@ class ImageExtractionPipeline:
         print("Filtering for images with relevant content")
          # Initialize a mask to keep track of which images pass any topic model condition
         combined_mask = torch.zeros(len(images), dtype=torch.bool)
-        
+
         for tag, model in tqdm(self.topic_models.items()):
             with torch.no_grad():
                 classifier_scores = model.classify(clip_vectors).squeeze()
