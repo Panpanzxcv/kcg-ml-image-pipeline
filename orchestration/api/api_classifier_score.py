@@ -714,7 +714,7 @@ async def set_image_classifier_score_list(request: Request, classifier_score_lis
                     http_status_code=404
                 )
             image_hash = job_data['task_output_file_dict']['output_file_hash']
-            image_uuid = job_data['image_uuid']
+            image_uuid = job_data.get('image_uuid', None)
             # Fetch tag_id from classifier_models_collection
             classifier_data = request.app.classifier_models_collection.find_one({"classifier_id": classifier_score.classifier_id}, {"tag_id": 1})
             if not classifier_data:
@@ -1027,7 +1027,7 @@ async def set_image_classifier_score_v1(
                 http_status_code=404
             )
         tag_id = classifier_data['tag_id']
-        image_uuid = job_data['image_uuid']
+        image_uuid = job_data.get('image_uuid', None)
 
         query = {
             "classifier_id": classifier_score.classifier_id,
@@ -1272,7 +1272,7 @@ async def set_image_classifier_score_list(
                     http_status_code=404
                 )
             tag_id = classifier_data['tag_id']
-            image_uuid = job_data['image_uuid']
+            image_uuid = job_data.get('image_uuid', None)
 
             query = {
                 "classifier_id": classifier_score.classifier_id,
