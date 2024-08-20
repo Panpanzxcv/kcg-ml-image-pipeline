@@ -368,22 +368,39 @@ async def set_image_classifier_score(request: Request, classifier_score: Classif
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
 
     try:
-
         # Fetch image_hash from completed_jobs_collection
-        job_data = request.app.completed_jobs_collection.find_one({"uuid": classifier_score.job_uuid},  {"task_output_file_dict.output_file_hash": 1, "task_type": 1})
-        if not job_data or 'task_output_file_dict' not in job_data or 'output_file_hash' not in job_data['task_output_file_dict']:
+        job_data = request.app.completed_jobs_collection.find_one({"uuid": classifier_score.job_uuid},  {"task_output_file_dict.output_file_hash": 1, "task_type": 1, "image_uuid": 1})
+
+        if not job_data:
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS,
+                error_string="The provided UUID does not exist in completed_jobs_collection.",
+                http_status_code=404
+            )
+        
+        if 'task_output_file_dict' not in job_data or 'output_file_hash' not in job_data['task_output_file_dict']:
             return api_response_handler.create_error_response_v1(
                 error_code=ErrorCode.INVALID_PARAMS,
                 error_string="The provided UUID does not have an associated image hash.",
                 http_status_code=404
             )
+
         image_hash = job_data['task_output_file_dict']['output_file_hash']
         task_type = job_data['task_type']
-        image_uuid = job_data['image_uuid']
-        print(image_uuid)
+        image_uuid = job_data.get('image_uuid', None)
+
+        if image_uuid is None:
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS,
+                error_string="No valid image UUID found in the job.",
+                http_status_code=404
+            )
+
+        print(f"Image UUID: {image_uuid}")
 
         # Fetch tag_id from classifier_models_collection
         classifier_data = request.app.classifier_models_collection.find_one({"classifier_id": classifier_score.classifier_id}, {"tag_id": 1})
+
         if not classifier_data:
             return api_response_handler.create_error_response_v1(
                 error_code=ErrorCode.INVALID_PARAMS,
@@ -392,7 +409,6 @@ async def set_image_classifier_score(request: Request, classifier_score: Classif
             )
         tag_id = classifier_data['tag_id']
 
-        
         query = {
             "classifier_id": classifier_score.classifier_id,
             "uuid": classifier_score.job_uuid,
@@ -402,7 +418,6 @@ async def set_image_classifier_score(request: Request, classifier_score: Classif
         # Get current UTC time in ISO format
         current_utc_time = datetime.utcnow().isoformat()
 
-        # Initialize new_score_data outside of the if/else block
         new_score_data = {
             "uuid": classifier_score.job_uuid,
             "task_type": task_type,
@@ -411,7 +426,7 @@ async def set_image_classifier_score(request: Request, classifier_score: Classif
             "score": classifier_score.score,
             "image_hash": image_hash,
             "creation_time": current_utc_time,
-            "image_source": generated_image,
+            "image_source": "generated_image",
             "image_uuid": image_uuid
         }
 
@@ -419,7 +434,14 @@ async def set_image_classifier_score(request: Request, classifier_score: Classif
         existing_score = request.app.image_classifier_scores_collection.find_one(query)
         if existing_score:
             # Update existing score
-            request.app.image_classifier_scores_collection.update_one(query, {"$set": {"score": classifier_score.score, "image_hash": image_hash, "creation_time": current_utc_time }})
+            request.app.image_classifier_scores_collection.update_one(
+                query,
+                {"$set": {
+                    "score": classifier_score.score,
+                    "image_hash": image_hash,
+                    "creation_time": current_utc_time
+                }}
+            )
         else:
             # Insert new score
             insert_result = request.app.image_classifier_scores_collection.insert_one(new_score_data)
@@ -432,11 +454,13 @@ async def set_image_classifier_score(request: Request, classifier_score: Classif
         )
     
     except Exception as e:
+        print(f"Error occurred: {str(e)}")
         return api_response_handler.create_error_response_v1(
             error_code=ErrorCode.OTHER_ERROR, 
             error_string=str(e),
             http_status_code=500
         )
+
 
 
 @router.delete("/pseudotag-classifier-scores/delete-image-classifier-score-by-uuid-and-classifier-id", 
