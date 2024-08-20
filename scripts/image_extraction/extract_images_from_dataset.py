@@ -200,7 +200,7 @@ class ImageExtractionPipeline:
         for tag, model in self.irrelevant_image_models.items():
             with torch.no_grad():
                 classifier_score = model.classify(clip_vector).item()
-            if classifier_score >= self.defect_threshold and not classifier_score > 3:
+            if classifier_score >= self.defect_threshold and classifier_score < 3:
                 return True
 
         # check if the image has any defects
