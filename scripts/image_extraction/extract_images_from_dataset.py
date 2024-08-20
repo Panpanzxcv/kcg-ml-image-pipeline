@@ -209,7 +209,7 @@ class ImageExtractionPipeline:
             # Filter images based on classifier scores
             images, clip_vectors = zip(
                 *[(image, clip_vector) for image, clip_vector, score in zip(images, clip_vectors, classifier_scores)
-                if score < self.defect_threshold]  
+                if (score < self.defect_threshold) and (score < 0.3)]  
             )
 
             # Convert back to list
@@ -227,7 +227,7 @@ class ImageExtractionPipeline:
             # Filter images based on classifier scores
             images, clip_vectors = zip(
                 *[(image, clip_vector) for image, clip_vector, score in zip(images, clip_vectors, classifier_scores)
-                if score < self.defect_threshold]  
+                if (score < self.defect_threshold) and (score < 0.3)]  
             )
 
             # Convert back to list
@@ -245,7 +245,7 @@ class ImageExtractionPipeline:
             # Filter images based on classifier scores
             images, clip_vectors = zip(
                 *[(image, clip_vector) for image, clip_vector, score in zip(images, clip_vectors, classifier_scores)
-                if score >= self.min_classifier_score]  # Adjust threshold as needed
+                if (score >= self.min_classifier_score) and (score < 0.3)]  # Adjust threshold as needed
             )
 
             # Convert back to list
