@@ -149,34 +149,3 @@ async def get_image_by_hash(request: Request, image_hash: str):
             error_string=str(e),
             http_status_code=500
         )
-
-@router.delete("/all-images/delete-image", 
-            description="Delete an image data",
-            tags=["all-images"],  
-            response_model=StandardSuccessResponseV1[WasPresentResponse],  
-            responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
-async def delete_image_data(request: Request, image_hash: str):
-    api_response_handler = await ApiResponseHandlerV1.createInstance(request)
-
-    try:
-        result = request.app.all_image_collection.delete_one({
-            "image_hash": image_hash
-        })
-        
-        if result.deleted_count == 0:
-            return api_response_handler.create_success_delete_response_v1(
-                False, 
-                http_status_code=200
-            )
-        
-        return api_response_handler.create_success_delete_response_v1(
-                True, 
-                http_status_code=200
-            )
-    
-    except Exception as e:
-        return api_response_handler.create_error_response_v1(
-            error_code=ErrorCode.OTHER_ERROR, 
-            error_string=str(e),
-            http_status_code=500
-        )
