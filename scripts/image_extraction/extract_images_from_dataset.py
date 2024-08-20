@@ -243,7 +243,7 @@ class ImageExtractionPipeline:
 
         # filter the images based on
         index=0 
-        for source_image, extract in tqdm(external_images, extracted_images):
+        for source_image, extract in tqdm(zip(external_images, extracted_images)):
             image = extract["image"]
             image_data = extract["image_data"]
 
