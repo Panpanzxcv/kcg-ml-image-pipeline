@@ -204,12 +204,12 @@ class ImageExtractionPipeline:
         print("Filtering irrelevant images")
         for tag, model in tqdm(self.irrelevant_image_models.items()):
             with torch.no_grad():
-                classifier_scores = model.classify(clip_vectors)  # Batch processing
+                classifier_scores = model.classify(clip_vectors)
         
             # Filter images based on classifier scores
             images, clip_vectors = zip(
                 *[(image, clip_vector) for image, clip_vector, score in zip(images, clip_vectors, classifier_scores)
-                if (score < self.defect_threshold) and (score < 3)]  
+                if (score.item() < self.defect_threshold) and (score < 3)]  
             )
 
             # Convert back to list
@@ -222,12 +222,12 @@ class ImageExtractionPipeline:
         print("Filtering based on defects")
         for tag, model in tqdm(self.defect_models.items()):
             with torch.no_grad():
-                classifier_scores = model.classify(clip_vectors)  # Batch processing
+                classifier_scores = model.classify(clip_vectors)
             
             # Filter images based on classifier scores
             images, clip_vectors = zip(
                 *[(image, clip_vector) for image, clip_vector, score in zip(images, clip_vectors, classifier_scores)
-                if (score < self.defect_threshold) and (score < 3)]  
+                if (score.item() < self.defect_threshold) and (score < 3)]  
             )
 
             # Convert back to list
@@ -240,12 +240,12 @@ class ImageExtractionPipeline:
         print("Filtering for images with relevant content")
         for tag, model in tqdm(self.topic_models.items()):
             with torch.no_grad():
-                classifier_scores = model.classify(clip_vectors)  # Batch processing
+                classifier_scores = model.classify(clip_vectors)
             
             # Filter images based on classifier scores
             images, clip_vectors = zip(
                 *[(image, clip_vector) for image, clip_vector, score in zip(images, clip_vectors, classifier_scores)
-                if (score >= self.min_classifier_score) and (score < 3)]
+                if (score.item() >= self.min_classifier_score) and (score < 3)]
             )
 
             # Convert back to list
