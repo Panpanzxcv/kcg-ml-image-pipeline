@@ -135,20 +135,13 @@ def delete_rank_active_learning_policy(request: Request, policy_id: int ):
     response_handler = ApiResponseHandlerV1(request)
     
     try:
-        was_present = False
-
         # Check if the policy is being used by any queue pairs
         if request.app.active_learning_queue_pairs_collection.find_one({"rank_active_learning_policy_id": policy_id}):
             return response_handler.create_error_response_v1(error_code=ErrorCode.INVALID_PARAMS, error_string="Cannot delete policy: It is being used by one or more queue pairs", http_status_code=400)
 
-        # Check if the policy exists and delete it
-        policy = request.app.rank_active_learning_policies_collection.find_one({"rank_active_learning_policy_id": policy_id})
-        if policy:
-            was_present = True
-            request.app.rank_active_learning_policies_collection.delete_one({"rank_active_learning_policy_id": policy_id})
-
-        # Return a success response indicating if the policy was deleted
-        return response_handler.create_success_delete_response_v1( was_present, 200)
+        result = request.app.rank_active_learning_policies_collection.delete_one({"rank_active_learning_policy_id": policy_id})
+        # Return a standard response with wasPresent set to true if there was a deletion
+        return response_handler.create_success_delete_response_v1(result.deleted_count != 0)
     except Exception as e:
         # Handle any unexpected errors
         return response_handler.create_error_response(ErrorCode.OTHER_ERROR, "Internal server error", 500)    
