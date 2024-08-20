@@ -10,6 +10,7 @@ import numpy as np
 import torch
 from diffusers import VQModel
 from tqdm import tqdm
+import msgpack
 
 base_dir = "./"
 sys.path.insert(0, base_dir)
@@ -23,6 +24,7 @@ from kandinsky.models.clip_image_encoder.clip_image_encoder import KandinskyCLIP
 from scripts.image_extraction.utils import extract_square_images, save_latents_and_vectors, upload_extract_data
 from training_worker.classifiers.models.elm_regression import ELMRegression
 from kandinsky.model_paths import DECODER_MODEL_PATH
+from utility.path import separate_bucket_and_file_path
 
 
 def parse_args():
@@ -169,7 +171,7 @@ class ImageExtractionPipeline:
 
     def get_classifier_model(self, tag_name):
         input_path = f"environmental/models/classifiers/{tag_name}/"
-        file_suffix = "elm-regression-clip-h.pth"
+        file_suffix = "elm-regression-clip-h_all_resolutions.pth"
 
         # Use the MinIO client's list_objects method directly with recursive=True
         model_files = [obj.object_name for obj in self.minio_client.list_objects('datasets', prefix=input_path, recursive=True) if obj.object_name.endswith(file_suffix)]
@@ -232,14 +234,14 @@ class ImageExtractionPipeline:
         
         return True
 
-    def filter_extracts(self, external_images: list, extracted_images: list):
+    def upload_extracts(self, external_images: list, extracted_images: list):
         print("Filtering extracted images...........")
         extract_data=[]
         extraction_policy= "random_crop_resize"
 
         # filter the images based on
         index=0 
-        for extract in extracted_images:
+        for extract in tqdm(extracted_images):
             image = extract["image"]
             image_data = extract["image_data"]
 
@@ -247,59 +249,57 @@ class ImageExtractionPipeline:
             with torch.no_grad():
                 clip_vector= self.clip.get_image_features(image).to(dtype=torch.float32)
 
-            # filter the image if it's not useful
-            if not self.is_filtered(clip_vector):
-                # calculate vae latent
-                pixel_values = np.array(image).astype(np.float32) / 127.5 - 1  # Normalize
-                pixel_values = np.transpose(pixel_values, [2, 0, 1])  # Correct channel order: [C, H, W]
-                pixel_values = torch.from_numpy(pixel_values).unsqueeze(0).to(device=self.device)  # Add batch dimension
+            # calculate vae latent
+            pixel_values = np.array(image).astype(np.float32) / 127.5 - 1  # Normalize
+            pixel_values = np.transpose(pixel_values, [2, 0, 1])  # Correct channel order: [C, H, W]
+            pixel_values = torch.from_numpy(pixel_values).unsqueeze(0).to(device=self.device)  # Add batch dimension
 
-                with torch.no_grad():
-                    vae_latent = self.vae.encode(pixel_values).latents
+            with torch.no_grad():
+                vae_latent = self.vae.encode(pixel_values).latents
 
-                pixel_values.cpu()
-                del pixel_values
-                torch.cuda.empty_cache()
+            pixel_values.cpu()
+            del pixel_values
+            torch.cuda.empty_cache()
 
-                # store data
-                source_image_data= external_images[index]
-                
-                data={
-                    "image_hash" : hashlib.md5(image_data.getvalue()).hexdigest(),
-                    "image_uuid": str(uuid.uuid4()),
-                    "image": image,
-                    "clip_vector": clip_vector,
-                    "vae_latent" : vae_latent,
-                    "source_image_hash": source_image_data["image_hash"],
-                    "source_image_uuid": source_image_data["uuid"],
-                    "extraction_policy": extraction_policy,
-                    "dataset": source_image_data["dataset"]
-                }
+            # store data
+            source_image_data= external_images[index]
+            
+            data={
+                "image_hash" : hashlib.md5(image_data.getvalue()).hexdigest(),
+                "image_uuid": str(uuid.uuid4()),
+                "image": image,
+                "clip_vector": clip_vector,
+                "vae_latent" : vae_latent,
+                "source_image_hash": source_image_data["image_hash"],
+                "source_image_uuid": source_image_data["uuid"],
+                "extraction_policy": extraction_policy,
+                "dataset": source_image_data["dataset"]
+            }
 
-                extract_data.append(data)
+            extract_data.append(data)
 
-                # spawn upload data thread
-                thread = threading.Thread(target=upload_extract_data, args=(self.minio_client, data,))
+            # spawn upload data thread
+            thread = threading.Thread(target=upload_extract_data, args=(self.minio_client, data,))
+            thread.start()
+            self.threads.append(thread)
+
+            self.clip_vectors.append(clip_vector)
+            self.vae_latents.append(vae_latent)
+            self.image_hashes.append(data["image_hash"])
+            
+            # check if batch size was reached
+            if len(self.clip_vectors) >= self.file_batch_size:
+                # save batch file
+                clip_vectors= self.clip_vectors.copy()
+                vae_latents= self.vae_latents.copy()
+
+                self.clip_vectors =[]
+                self.vae_latents =[]
+
+                thread = threading.Thread(target=save_latents_and_vectors, args=(self.minio_client, self.dataset, clip_vectors, vae_latents, self.image_hashes,))
                 thread.start()
                 self.threads.append(thread)
-
-                self.clip_vectors.append(clip_vector)
-                self.vae_latents.append(vae_latent)
-                self.image_hashes.append(data["image_hash"])
-                
-                # check if batch size was reached
-                if len(self.clip_vectors) >= self.file_batch_size:
-                    # save batch file
-                    clip_vectors= self.clip_vectors.copy()
-                    vae_latents= self.vae_latents.copy()
-
-                    self.clip_vectors =[]
-                    self.vae_latents =[]
-
-                    thread = threading.Thread(target=save_latents_and_vectors, args=(self.minio_client, self.dataset, clip_vectors, vae_latents, self.image_hashes,))
-                    thread.start()
-                    self.threads.append(thread)
-            
+        
             index+=1
         
         # save any extra vectors to numpy files
@@ -316,6 +316,21 @@ class ImageExtractionPipeline:
             self.threads.append(thread)
 
         return extract_data
+
+    def load_clip_vector(self, image_data):
+        # get file path
+        file_path= image_data["file_path"]
+
+        # load clip vector
+        bucket_name, input_file_path = separate_bucket_and_file_path(file_path)
+        file_path = os.path.splitext(input_file_path)[0]
+
+        clip_path = file_path + "_clip_kandinsky.msgpack"
+        features_data = cmd.get_file_from_minio(self.minio_client, bucket_name, clip_path)
+        clip_vector = msgpack.unpackb(features_data.data)["clip-feature-vector"]
+        clip_vector = torch.tensor(clip_vector).squeeze()
+
+        return clip_vector
 
     def extract_images(self):
         print("loading external dataset images..........")
@@ -337,12 +352,21 @@ class ImageExtractionPipeline:
 
             # getting the batch
             images_batch= external_images[start_index:end_index]
+           
+            # filtering irrelevant images
+            filtered_batch=[]
+            print(f"filtering irrelevant images from the batch")
+            for image in images_batch:
+                clip_vector= self.load_clip_vector(image)
+                # filter the image if it's not useful
+                if not self.is_filtered(clip_vector):
+                    filtered_batch.append(image)
 
             # extracting the 512*512 image patches
-            extracts= extract_square_images(self.minio_client, images_batch, self.target_size)
+            extracts= extract_square_images(self.minio_client, filtered_batch, self.target_size)
 
-            # filter the extracts by quality
-            extract_data= self.filter_extracts(external_images= images_batch,
+            # upload the extracts to minio and mongoDB
+            extract_data= self.upload_extracts(external_images= images_batch,
                                                extracted_images= extracts)
             
             processed_images+= len(extract_data)
