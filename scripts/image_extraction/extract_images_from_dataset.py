@@ -199,41 +199,35 @@ class ImageExtractionPipeline:
         return clip_model
     
     def filter_external_images(self, images, clip_vectors):
-        total_images= len(images)
+        total_images = len(images)
 
         print("Filtering irrelevant images")
         for tag, model in tqdm(self.irrelevant_image_models.items()):
             with torch.no_grad():
                 classifier_scores = model.classify(clip_vectors)
-        
-            # Filter images based on classifier scores
-            images, clip_vectors = zip(
-                *[(image, clip_vector) for image, clip_vector, score in zip(images, clip_vectors, classifier_scores)
-                if (score.item() < self.defect_threshold) and (score < 3)]  
-            )
+            
+            # Create a mask for filtering based on classifier scores
+            mask = (classifier_scores < 3) & (classifier_scores < self.defect_threshold)
 
-            # Convert back to list
-            images = list(images)
-            clip_vectors = list(clip_vectors)
-        
+            # Apply the mask to filter the images 
+            images = [image for image, keep in zip(images, mask) if keep]
+            clip_vectors = clip_vectors[mask]
+
         print(f"{total_images - len(images)} images filtered as irrelevant")
         total_images = len(images)
 
         print("Filtering based on defects")
         for tag, model in tqdm(self.defect_models.items()):
             with torch.no_grad():
-                classifier_scores = model.classify(clip_vectors)
+                classifier_scores = model.classify(clip_vectors) 
             
-            # Filter images based on classifier scores
-            images, clip_vectors = zip(
-                *[(image, clip_vector) for image, clip_vector, score in zip(images, clip_vectors, classifier_scores)
-                if (score.item() < self.defect_threshold) and (score < 3)]  
-            )
+            # Create a mask for filtering based on classifier scores
+            mask = (classifier_scores < 3) & (classifier_scores < self.defect_threshold)
 
-            # Convert back to list
-            images = list(images)
-            clip_vectors = list(clip_vectors)
-        
+            # Apply the mask to filter images and clip_vectors
+            images = [image for image, keep in zip(images, mask) if keep]
+            clip_vectors = clip_vectors[mask]
+
         print(f"{total_images - len(images)} images filtered as defective")
         total_images = len(images)
 
@@ -242,16 +236,13 @@ class ImageExtractionPipeline:
             with torch.no_grad():
                 classifier_scores = model.classify(clip_vectors)
             
-            # Filter images based on classifier scores
-            images, clip_vectors = zip(
-                *[(image, clip_vector) for image, clip_vector, score in zip(images, clip_vectors, classifier_scores)
-                if (score.item() >= self.min_classifier_score) and (score < 3)]
-            )
+            # Create a mask for filtering based on classifier scores
+            mask = (classifier_scores >= self.min_classifier_score) & (classifier_scores < 3)
 
-            # Convert back to list
-            images = list(images)
-            clip_vectors = list(clip_vectors)
-        
+            # Apply the mask to filter images and clip_vectors
+            images = [image for image, keep in zip(images, mask) if keep]
+            clip_vectors = clip_vectors[mask]
+
         total_images = len(images)
         print(f"{total_images} images were selected after filtering")
 
