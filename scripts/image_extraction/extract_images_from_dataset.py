@@ -214,16 +214,22 @@ class ImageExtractionPipeline:
         total_images = len(images)
 
         print("Filtering for images with relevant content")
+         # Initialize a mask to keep track of which images pass any topic model condition
+        combined_mask = torch.zeros(len(images), dtype=torch.bool)
+        
         for tag, model in tqdm(self.topic_models.items()):
             with torch.no_grad():
                 classifier_scores = model.classify(clip_vectors).squeeze()
-            
+
             # Create a mask for filtering based on classifier scores
             mask = (classifier_scores >= self.min_classifier_score) & (classifier_scores < 3)
 
-            # Apply the mask to filter images and clip_vectors
-            images = [image for image, keep in zip(images, mask) if keep]
-            clip_vectors = clip_vectors[mask]
+            # Update the combined mask to keep images that satisfy any condition
+            combined_mask |= mask
+
+        # Apply the combined mask to filter images and clip_vectors
+        images = [image for image, keep in zip(images, combined_mask) if keep]
+        clip_vectors = clip_vectors[combined_mask]
 
         total_images = len(images)
         print(f"{total_images} images were selected after filtering")
