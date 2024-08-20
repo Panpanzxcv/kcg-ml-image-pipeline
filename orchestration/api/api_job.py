@@ -17,7 +17,7 @@ import json
 import paramiko
 from typing import Optional, Dict
 import csv
-from .api_utils import ApiResponseHandler, ErrorCode, StandardSuccessResponse, AddJob, WasPresentResponse, ApiResponseHandlerV1, StandardSuccessResponseV1, CountLastHour, CountResponse, insert_into_all_images_for_completed, PrettyJSONResponse, DoneResponse, generate_uuid
+from .api_utils import ErrorCode, AddJob, WasPresentResponse, ApiResponseHandlerV1, StandardSuccessResponseV1, CountLastHour, CountResponse, insert_into_all_images_for_completed, PrettyJSONResponse, DoneResponse, generate_uuid, check_image_usage, remove_from_additional_collections, delete_files_from_minio
 from bson import ObjectId
 import time
 
@@ -231,38 +231,87 @@ def delete_completed_job(request: Request, uuid):
 
     return True
 
+
 @router.delete(
     "/queue/image-generation/delete-completed-by-uuid",
     description="Remove a completed job by UUID.",
-    response_model=StandardSuccessResponse[WasPresentResponse],
+    response_model=StandardSuccessResponseV1[WasPresentResponse],
     tags=["jobs-standardized"],
-    responses=ApiResponseHandler.listErrors([422,500]),
+    responses=ApiResponseHandlerV1.listErrors([422, 500]),
 )
-def delete_completed_job(request: Request, uuid: str):
-    api_response_handler = ApiResponseHandler(request)
+async def delete_completed_job(request: Request, uuid: str):
+    api_response_handler = await ApiResponseHandlerV1.createInstance(request)
     try:
         job = request.app.completed_jobs_collection.find_one({"uuid": uuid})
 
         if job is None:
-            return api_response_handler.create_success_delete_response(
-                response_data=False,  
+            print("Job not found in completed_jobs_collection.")
+            return api_response_handler.create_success_delete_response_v1(
+                False,
                 http_status_code=200,
             )
 
-        # If job is found, delete it
+        # Check if the image is used in ranking datapoints or has a tag assigned
+        image_hash = job.get("task_output_file_dict", {}).get("output_file_hash")
+        file_path = job.get("task_output_file_dict", {}).get("output_file_path")
+
+        if not image_hash or not file_path:
+            print("No valid image hash or file path found in the job.")
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS,
+                error_string="No valid image hash or file path found in the job.",
+                http_status_code=422
+            )
+
+        # Use the helper function to check image usage
+        is_safe_to_delete, error_message = check_image_usage(request, image_hash)
+
+        if not is_safe_to_delete:
+            print(error_message)
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS,
+                error_string=error_message,
+                http_status_code=422
+            )
+
+        # Remove the image data from additional collections
+        remove_from_additional_collections(request, image_hash)
+
+        path_parts = file_path.split("/", 1)
+        if len(path_parts) < 2:
+            print(f"Error: Path format is not correct for file_path: {file_path}")
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS,
+                error_string="The file path format is incorrect; expected 'bucket_name/object_name'.",
+                http_status_code=422
+            )
+
+        bucket_name = path_parts[0]
+        object_name = path_parts[1]
+
+        # Delete the related files from MinIO
+        if bucket_name and object_name:
+            print(f"Removing object {object_name} and associated files from bucket {bucket_name}")
+            delete_files_from_minio(request.app.minio_client, bucket_name, object_name)
+
+        # Finally, delete the image from completed_jobs_collection
+        print(f"Removing job with uuid: {uuid} from completed_jobs_collection")
         request.app.completed_jobs_collection.delete_one({"uuid": uuid})
 
-        return api_response_handler.create_success_delete_response(
-            response_data=True, 
+        return api_response_handler.create_success_delete_response_v1(
+            True,
             http_status_code=200,
         )
 
     except Exception as e:
-        return api_response_handler.create_error_response(
+        print(f"Error occurred: {str(e)}")
+        return api_response_handler.create_error_response_v1(
             error_code=ErrorCode.OTHER_ERROR,
             error_string=str(e),
             http_status_code=500,
         )
+
+
  # --------------------- List ----------------------
 
 @router.get("/queue/image-generation/list-pending", tags = ['deprecated3'], description= "changed with /queue/image-generation/list-pending-jobs")
