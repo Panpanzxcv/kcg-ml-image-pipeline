@@ -244,6 +244,7 @@ async def delete_completed_job(request: Request, uuid: str):
         job = request.app.completed_jobs_collection.find_one({"uuid": uuid})
 
         if job is None:
+            print("Job not found in completed_jobs_collection.")
             return api_response_handler.create_success_delete_response_v1(
                 False,
                 http_status_code=200,
@@ -254,6 +255,7 @@ async def delete_completed_job(request: Request, uuid: str):
         file_path = job.get("task_output_file_dict", {}).get("output_file_path")
 
         if not image_hash or not file_path:
+            print("No valid image hash or file path found in the job.")
             return api_response_handler.create_error_response_v1(
                 error_code=ErrorCode.INVALID_PARAMS,
                 error_string="No valid image hash or file path found in the job.",
@@ -272,6 +274,7 @@ async def delete_completed_job(request: Request, uuid: str):
         })
 
         if datapoint_exists or tag_exists:
+            print("Image is used in a datapoint or has a tag assigned, cannot delete.")
             return api_response_handler.create_error_response_v1(
                 error_code=ErrorCode.INVALID_PARAMS,
                 error_string="Cannot delete the image as it is used in a datapoint or has a tag assigned.",
@@ -293,9 +296,13 @@ async def delete_completed_job(request: Request, uuid: str):
 
         for collection in collections_to_remove:
             if collection == request.app.irrelevant_images_collection:
-                collection.delete_many({"file_hash": image_hash})
+                print(f"Removing documents with file_hash: {image_hash} from {collection.name}")
+                result = collection.delete_many({"file_hash": image_hash})
+                print(f"Deleted {result.deleted_count} documents from {collection.name}")
             else:
-                collection.delete_many({"image_hash": image_hash})
+                print(f"Removing documents with image_hash: {image_hash} from {collection.name}")
+                result = collection.delete_many({"image_hash": image_hash})
+                print(f"Deleted {result.deleted_count} documents from {collection.name}")
 
         # Correctly split the file path to get the bucket name and object name
         path_parts = file_path.split("/", 1)
@@ -304,6 +311,7 @@ async def delete_completed_job(request: Request, uuid: str):
 
         # Delete the related files from MinIO
         if bucket_name and object_name:
+            print(f"Removing object {object_name} from bucket {bucket_name}")
             cmd.remove_an_object(request.app.minio_client, bucket_name, object_name)
             # Delete associated files with the same prefix (e.g., .jpg, .msgpack)
             associated_files = [
@@ -314,9 +322,11 @@ async def delete_completed_job(request: Request, uuid: str):
                 f"{object_name.rsplit('.', 1)[0]}_vae_latent.msgpack",
             ]
             for file in associated_files:
+                print(f"Removing associated file {file} from bucket {bucket_name}")
                 cmd.remove_an_object(request.app.minio_client, bucket_name, file)
 
         # Finally, delete the image from completed_jobs_collection
+        print(f"Removing job with uuid: {uuid} from completed_jobs_collection")
         request.app.completed_jobs_collection.delete_one({"uuid": uuid})
 
         return api_response_handler.create_success_delete_response_v1(
@@ -325,11 +335,13 @@ async def delete_completed_job(request: Request, uuid: str):
         )
 
     except Exception as e:
+        print(f"Error occurred: {str(e)}")
         return api_response_handler.create_error_response_v1(
             error_code=ErrorCode.OTHER_ERROR,
             error_string=str(e),
             http_status_code=500,
         )
+
 
 
 
