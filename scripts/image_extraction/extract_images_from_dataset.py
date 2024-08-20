@@ -396,6 +396,7 @@ class ImageExtractionPipeline:
                     print(f"Failed to load clip vectors for an image: {e}")
                 
             # filter irrelevant images
+            clip_vectors= torch.stack(clip_vectors)
             filtered_batch= self.filter_external_images(images_batch, clip_vectors)
 
             # extracting the 512*512 image patches
