@@ -329,9 +329,11 @@ async def get_all_external_image_data_list_v1(
             tags=["external-images"],  
             response_model=StandardSuccessResponseV1[List[ExternalImageData]],  
             responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
-async def get_external_image_list_without_extracts(request: Request, dataset: str=None, size: int = None):
+async def get_external_image_list_without_extracts(request: Request, dataset: str = None, size: int = None):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
+    
     try:
+        # Base query for external images
         query = {}
         if dataset:
             query['dataset'] = dataset
@@ -341,30 +343,33 @@ async def get_external_image_list_without_extracts(request: Request, dataset: st
             {"$match": query},
             {
                 "$lookup": {
-                    "from": "extracts_collection",
-                    "localField": "image_hash",  # Adjust field name as necessary
-                    "foreignField": "source_image_hash",  # Adjust field name as necessary
-                    "as": "extracts"
+                    "from": "extracts",  # Name of the extracts collection
+                    "localField": "image_hash",     # The field in external_images_collection
+                    "foreignField": "source_image_hash",  # The field in extracts_collection
+                    "as": "extracts"                # The array to store the joined results
                 }
             },
             {"$match": {"extracts": {"$size": 0}}},  # Filter to include only those without extracts
         ]
 
+        # Apply sampling if the size parameter is provided
         if size:
             aggregation_pipeline.append({"$sample": {"size": size}})
 
-
+        # Execute the aggregation
         image_data_list = list(request.app.external_images_collection.aggregate(aggregation_pipeline))
 
+        # Remove '_id' field from results
         for image_data in image_data_list:
-            image_data.pop('_id', None)  # Remove the auto-generated field
+            image_data.pop('_id', None)
 
         return api_response_handler.create_success_response_v1(
             response_data={"data": image_data_list},
-            http_status_code=200  
+            http_status_code=200
         )
-    
+
     except Exception as e:
+        # Return a structured error response
         return api_response_handler.create_error_response_v1(
             error_code=ErrorCode.OTHER_ERROR, 
             error_string=str(e),
