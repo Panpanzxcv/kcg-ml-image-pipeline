@@ -379,6 +379,7 @@ async def set_image_classifier_score(request: Request, classifier_score: Classif
             )
         image_hash = job_data['task_output_file_dict']['output_file_hash']
         task_type = job_data['task_type']
+        image_uuid = job_data['image_uuid']
 
         # Fetch tag_id from classifier_models_collection
         classifier_data = request.app.classifier_models_collection.find_one({"classifier_id": classifier_score.classifier_id}, {"tag_id": 1})
@@ -409,7 +410,8 @@ async def set_image_classifier_score(request: Request, classifier_score: Classif
             "score": classifier_score.score,
             "image_hash": image_hash,
             "creation_time": current_utc_time,
-            "image_source": generated_image
+            "image_source": generated_image,
+            "image_uuid": image_uuid
         }
 
         # Check for existing score and update or insert accordingly
@@ -686,6 +688,7 @@ async def set_image_classifier_score_list(request: Request, classifier_score_lis
                     http_status_code=404
                 )
             image_hash = job_data['task_output_file_dict']['output_file_hash']
+            image_uuid = job_data['image_uuid']
             # Fetch tag_id from classifier_models_collection
             classifier_data = request.app.classifier_models_collection.find_one({"classifier_id": classifier_score.classifier_id}, {"tag_id": 1})
             if not classifier_data:
@@ -711,7 +714,8 @@ async def set_image_classifier_score_list(request: Request, classifier_score_lis
                 "score": classifier_score.score,
                 "image_hash": image_hash,
                 "creation_time": current_utc_time,
-                "image_source": generated_image
+                "image_source": generated_image,
+                "image_uuid": image_uuid
             }
             # Check for existing score and update or insert accordingly
             existing_score = request.app.image_classifier_scores_collection.find_one(query)
@@ -997,6 +1001,7 @@ async def set_image_classifier_score_v1(
                 http_status_code=404
             )
         tag_id = classifier_data['tag_id']
+        image_uuid = job_data['image_uuid']
 
         query = {
             "classifier_id": classifier_score.classifier_id,
@@ -1017,7 +1022,8 @@ async def set_image_classifier_score_v1(
             "score": classifier_score.score,
             "image_hash": image_hash,
             "creation_time": current_utc_time,
-            "image_source": image_source
+            "image_source": image_source,
+            "image_uuid": image_uuid
         }
 
         # Check for existing score and update or insert accordingly
@@ -1240,6 +1246,7 @@ async def set_image_classifier_score_list(
                     http_status_code=404
                 )
             tag_id = classifier_data['tag_id']
+            image_uuid = job_data['image_uuid']
 
             query = {
                 "classifier_id": classifier_score.classifier_id,
@@ -1260,7 +1267,8 @@ async def set_image_classifier_score_list(
                 "score": classifier_score.score,
                 "image_hash": image_hash,
                 "creation_time": current_utc_time,
-                "image_source": image_source
+                "image_source": image_source,
+                "image_uuid": image_uuid
             }
 
             # Check for existing score and update or insert accordingly
