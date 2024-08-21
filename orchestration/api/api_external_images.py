@@ -438,7 +438,7 @@ async def delete_external_image_data(request: Request, image_hash: str):
             )
 
         # Remove the image data from additional collections
-        remove_from_additional_collections(request, image_hash)
+        remove_from_additional_collections(request, image_hash, bucket_id=2, image_source="external_image")
 
         path_parts = file_path.split("/", 1)
         if len(path_parts) < 2:
@@ -518,7 +518,7 @@ async def delete_external_image_data_list(request: Request, image_hash_list: Lis
                 )
 
             # Remove the image data from additional collections
-            remove_from_additional_collections(request, image_hash)
+            remove_from_additional_collections(request, image_hash, bucket_id=2, image_source="external_image")
 
             path_parts = file_path.split("/", 1)
             if len(path_parts) < 2:

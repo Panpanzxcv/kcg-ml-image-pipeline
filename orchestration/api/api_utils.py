@@ -19,6 +19,8 @@ import os
 from typing import List, Union
 from urllib.parse import urlparse, parse_qs
 import random
+from minio.error import S3Error
+
 
 
 class IrrelevantResponse(BaseModel):
@@ -806,40 +808,69 @@ def check_image_usage(request, image_hash):
 
     return True, None
 
-def remove_from_additional_collections(request, image_hash):
+def remove_from_additional_collections(request, image_hash, bucket_id=None, image_source=None):
     """
     Remove documents associated with the given image_hash or file_hash
-    from additional collections.
+    from additional collections, with additional checks for bucket number 
+    and image source.
     """
     collections_to_remove = [
         request.app.all_image_collection,
         request.app.image_rank_scores_collection,
         request.app.image_classifier_scores_collection,
-        request.app.image_sigma_scores_collection,
-        request.app.image_residuals_collection,
-        request.app.image_percentiles_collection,
-        request.app.image_residual_percentiles_collection,
         request.app.image_rank_use_count_collection,
         request.app.irrelevant_images_collection,  # This uses "file_hash" instead of "image_hash"
         request.app.image_hashes_collection,
     ]
 
+    # Conditional collections based on image_source
+    if image_source == "generated_image":
+        collections_to_remove.extend([
+            request.app.image_sigma_scores_collection,
+            request.app.image_residuals_collection,
+            request.app.image_percentiles_collection,
+            request.app.image_residual_percentiles_collection,
+        ])
+
     for collection in collections_to_remove:
-        if collection == request.app.irrelevant_images_collection:
-            print(f"Removing documents with file_hash: {image_hash} from {collection.name}")
-            result = collection.delete_many({"file_hash": image_hash})
-            print(f"Deleted {result.deleted_count} documents from {collection.name}")
+        query = {}
+        
+        # Handle special cases
+        if collection == request.app.all_image_collection:
+            query = {"image_hash": image_hash}
+            if bucket_id is not None:
+                query["bucket_id"] = bucket_id
+            print(f"Removing documents with image_hash: {image_hash} and bucket_id: {bucket_id} from {collection.name}")
+        
+        elif collection in [request.app.image_rank_scores_collection, 
+                            request.app.image_classifier_scores_collection, 
+                            request.app.irrelevant_images_collection]:
+            if collection == request.app.irrelevant_images_collection:
+                query = {"file_hash": image_hash}
+            else:
+                query = {"image_hash": image_hash}
+            
+            if image_source is not None:
+                query["image_source"] = image_source
+            print(f"Removing documents with {query} from {collection.name}")
+        
         else:
+            query = {"image_hash": image_hash}
             print(f"Removing documents with image_hash: {image_hash} from {collection.name}")
-            result = collection.delete_many({"image_hash": image_hash})
-            print(f"Deleted {result.deleted_count} documents from {collection.name}")
+        
+        # Execute deletion
+        result = collection.delete_many(query)
+        print(f"Deleted {result.deleted_count} documents from {collection.name}")
+
+
+
 
 
 def delete_files_from_minio(minio_client, bucket_name, object_name):
     """
     Delete files from MinIO. This function will attempt to delete the main file
-    and associated files. If any file is missing or fails to delete, it will
-    silently continue with the next file.
+    and associated files. If any file is missing, it will silently continue. 
+    If there is any other error, it will raise an exception.
     """
     files_to_delete = [
         object_name,
@@ -853,9 +884,17 @@ def delete_files_from_minio(minio_client, bucket_name, object_name):
     for file in files_to_delete:
         try:
             minio_client.remove_object(bucket_name, file)
-        except Exception:
-            # Silently continue if deletion fails
-            continue
+        except S3Error as e:
+            if e.code == 'NoSuchKey':
+                # Silently continue if the file does not exist
+                continue
+            else:
+                # Raise the exception if it's any other error
+                raise e
+        except Exception as e:
+            # Raise the exception for any other general errors
+            raise e
+
 
 def uuid64_number_to_string(uuid_number):
     hex_string = uuid_number.to_bytes(8, 'big').hex()

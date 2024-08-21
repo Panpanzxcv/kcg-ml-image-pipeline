@@ -377,7 +377,7 @@ async def delete_extract_image_data(request: Request, image_hash: str):
             )
 
         # Remove the image data from additional collections
-        remove_from_additional_collections(request, image_hash)
+        remove_from_additional_collections(request, image_hash, bucket_id=1, image_source="extract_image")
 
         # Ensure that the file path has the two necessary parts
         path_parts = file_path.split("/", 1)

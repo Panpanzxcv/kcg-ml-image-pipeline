@@ -1,5 +1,6 @@
-from pymongo import MongoClient
+from pymongo import MongoClient, UpdateOne
 from minio import Minio
+from minio.error import S3Error
 
 def get_existing_hashes(db):
     # Fetch all image hashes from completed_jobs_collection, extracts_collection, and external_images_collection
@@ -10,6 +11,35 @@ def get_existing_hashes(db):
     # Combine all hashes
     all_existing_hashes = completed_jobs_hashes.union(extracts_hashes).union(external_images_hashes)
     return all_existing_hashes
+
+def delete_files_from_minio(minio_client, bucket_name, object_name):
+    """
+    Delete files from MinIO. This function will attempt to delete the main file
+    and associated files. If any file is missing, it will silently continue with the next file.
+    """
+    files_to_delete = [
+        object_name,
+        f"{object_name.rsplit('.', 1)[0]}_clip_kandinsky.msgpack",
+        f"{object_name.rsplit('.', 1)[0]}_clip.msgpack",
+        f"{object_name.rsplit('.', 1)[0]}_data.msgpack",
+        f"{object_name.rsplit('.', 1)[0]}_embedding.msgpack",
+        f"{object_name.rsplit('.', 1)[0]}_vae_latent.msgpack",
+    ]
+
+    for file in files_to_delete:
+        try:
+            minio_client.remove_object(bucket_name, file)
+            print(f"Removed {file} from {bucket_name}")
+        except S3Error as e:
+            if e.code == 'NoSuchKey':
+                # Silently continue if the file does not exist
+                continue
+            else:
+                # Raise the exception if it's any other error
+                raise e
+        except Exception as e:
+            # Raise the exception for any other general errors
+            raise e
 
 def remove_orphaned_entries(collection, all_existing_hashes, hash_field, minio_client):
     orphaned_docs = collection.find({hash_field: {"$nin": list(all_existing_hashes)}})
@@ -23,37 +53,11 @@ def remove_orphaned_entries(collection, all_existing_hashes, hash_field, minio_c
             # Remove the corresponding file from MinIO
             file_path = doc.get("file_path") or doc.get("task_output_file_dict", {}).get("output_file_path")
             if file_path:
-                bucket_name, object_name = file_path.split('/', 1)
                 try:
-                    # Remove the primary file
-                    minio_client.remove_object(bucket_name, object_name)
-                    print(f"Removed {object_name} from {bucket_name}")
-
-                    # Remove associated files (for completed jobs, extracts, and external images)
-                    associated_files = [
-                        f"{object_name.rsplit('.', 1)[0]}_clip_kandinsky.msgpack",
-                        f"{object_name.rsplit('.', 1)[0]}_clip.msgpack",
-                        f"{object_name.rsplit('.', 1)[0]}_data.msgpack",
-                        f"{object_name.rsplit('.', 1)[0]}_embedding.msgpack",
-                        f"{object_name.rsplit('.', 1)[0]}_vae_latent.msgpack",
-                    ]
-
-                    # Adjust the list of associated files based on the type of document
-                    if collection.name == "extracts_collection":
-                        associated_files = [
-                            f"{object_name.rsplit('.', 1)[0]}_clip_kandinsky.msgpack",
-                            f"{object_name.rsplit('.', 1)[0]}_vae_latent.msgpack",
-                        ]
-                    elif collection.name == "external_images_collection":
-                        associated_files = [
-                            f"{object_name.rsplit('.', 1)[0]}_clip_kandinsky.msgpack"
-                        ]
-
-                    for file in associated_files:
-                        minio_client.remove_object(bucket_name, file)
-                        print(f"Removed {file} from {bucket_name}")
-                except Exception as e:
-                    print(f"Failed to remove {object_name} from {bucket_name}: {e}")
+                    bucket_name, object_name = file_path.split('/', 1)
+                    delete_files_from_minio(minio_client, bucket_name, object_name)
+                except ValueError:
+                    print(f"Error processing file path: {file_path}")
 
         # Remove orphaned documents from MongoDB
         collection.delete_many({hash_field: {"$nin": list(all_existing_hashes)}})
@@ -62,14 +66,14 @@ def remove_orphaned_entries(collection, all_existing_hashes, hash_field, minio_c
 
 def main():
     # Connect to MongoDB
-    client = MongoClient('mongodb://localhost:27017/')
-    db = client['your_database_name']  # Replace with your database name
+    client = MongoClient('mongodb://192.168.3.1:32017/')
+    db = client['orchestration-job-db']  
 
     # Connect to MinIO
     minio_client = Minio(
-        "play.min.io",  # Replace with your MinIO server address
-        access_key="your-access-key",  # Replace with your access key
-        secret_key="your-secret-key",  # Replace with your secret key
+        "192.168.3.5:9000",  
+        access_key="v048BpXpWrsVIHUfdAix",  
+        secret_key="4TFS20qkxVuX2HaC8ezAgG7GaDlVI1TqSPs0BKyu",  
         secure=False
     )
 
