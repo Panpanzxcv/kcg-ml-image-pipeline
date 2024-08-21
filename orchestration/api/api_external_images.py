@@ -341,35 +341,59 @@ async def get_external_image_list_without_extracts(request: Request, dataset: st
             {"$match": query},
             {
                 "$lookup": {
-                    "from": "extracts_collection",
-                    "localField": "image_hash",  # Adjust field name as necessary
-                    "foreignField": "source_image_hash",  # Adjust field name as necessary
-                    "as": "extracts"
+                    "from": "extracts",
+                    "localField": "image_hash",
+                    "foreignField": "source_image_hash",
+                    "as": "extracts",
                 }
             },
-            {"$match": {"extracts": {"$size": 0}}},  # Filter to include only those without extracts
+            {"$match": {"extracts": {"$eq": []}}},  # Filter to include only those without extracts
+            {"$project": {"extracts": 0}}  # Exclude 'extracts' from the output
         ]
 
+        image_data_list = []
+        batch_size = 1000  # Set the batch size
+        accumulated_size = 0
+
+        # If size is specified, process in batches until the required size is reached
         if size:
-            aggregation_pipeline.append({"$sample": {"size": size}})
+            while accumulated_size < size:
+                batch_pipeline = aggregation_pipeline.copy()
+                remaining_size = size - accumulated_size
+                batch_pipeline.append({"$limit": remaining_size})
 
+                cursor = request.app.external_images_collection.aggregate(batch_pipeline, batchSize=batch_size)
+                batch_data = list(cursor)
 
-        image_data_list = list(request.app.external_images_collection.aggregate(aggregation_pipeline))
+                if not batch_data:  # If no more data is returned, break the loop
+                    break
 
-        for image_data in image_data_list:
-            image_data.pop('_id', None)  # Remove the auto-generated field
+                image_data_list.extend(batch_data)
+                accumulated_size += len(batch_data)
+        else:
+            # Process in batches if size is not specified
+            cursor = request.app.external_images_collection.aggregate(aggregation_pipeline, batchSize=batch_size)
+            for image_data in cursor:
+                image_data.pop('_id', None)  # Remove the auto-generated field
+                image_data_list.append(image_data)
+
+        # Ensure we return the exact number requested (in case we fetched more than needed)
+        if size:
+            image_data_list = image_data_list[:size]
 
         return api_response_handler.create_success_response_v1(
             response_data={"data": image_data_list},
             http_status_code=200  
         )
-    
+
     except Exception as e:
         return api_response_handler.create_error_response_v1(
             error_code=ErrorCode.OTHER_ERROR, 
             error_string=str(e),
             http_status_code=500
         )
+
+
 
 @router.delete("/external-images/delete-external-image", 
             description="Delete an external image data if it's not used in a selection datapoint or has a tag assigned",
