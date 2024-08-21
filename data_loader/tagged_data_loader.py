@@ -30,7 +30,7 @@ class TaggedDatasetLoader:
                  server_addr=None,
                  pooling_strategy=constants.AVERAGE_POOLING,
                  train_percent=0.9,
-                 epochs=10):
+                 epochs=100):
         if server_addr is None:
             self.server_addr = request.SERVER_ADDRESS
         if minio_access_key is not None:
