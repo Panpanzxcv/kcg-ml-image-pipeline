@@ -24,6 +24,10 @@ def add_image_uuid_to_rank_scores():
                 print("Skipping document without image_hash.")
                 continue  # Skip if no image_hash is present
 
+            if "image_uuid" in rank_score:
+                print(f"Skipping document with _id: {rank_score['_id']} as it already has image_uuid.")
+                continue  # Skip if image_uuid is already present
+
             # Find the corresponding document in completed_jobs_collection
             job_data = completed_jobs_collection.find_one({"image_hash": image_hash}, {"uuid": 1})
             if job_data and "uuid" in job_data:

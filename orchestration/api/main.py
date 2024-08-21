@@ -230,6 +230,11 @@ def startup_db_client():
 
     app.all_image_collection = app.mongodb_db["all-images"]
 
+    all_images_hash_index=[
+    ('image_hash', pymongo.ASCENDING)
+    ]
+    create_index_if_not_exists(app.all_image_collection ,all_images_hash_index, 'all_images_hash_index')
+
     # bucket collection
 
     app.buckets_collection = app.mongodb_db["buckets"]
