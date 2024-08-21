@@ -307,6 +307,7 @@ class ResponseRankingScore(BaseModel):
     sigma_score: float
     image_source: str
     creation_time: str
+    image_uuid: int
 
 class ListRankingScore(BaseModel):
     scores: List[ResponseRankingScore]  

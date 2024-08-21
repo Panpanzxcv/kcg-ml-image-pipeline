@@ -178,7 +178,8 @@ async def set_image_rank_score_batch(
                 "sigma_score": ranking_score.sigma_score,
                 "image_hash": ranking_score.image_hash,
                 "creation_time": datetime.utcnow().isoformat(),
-                "image_source": ranking_score.image_source
+                "image_source": ranking_score.image_source,
+                "image_uuid": ranking_score.image_uuid
             }
 
             update_operation = UpdateOne(
