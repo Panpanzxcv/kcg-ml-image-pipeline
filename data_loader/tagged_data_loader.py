@@ -189,7 +189,7 @@ class TaggedDatasetLoader:
             raise Exception("Tag name not found")
 
         tagged_images = request.http_get_tagged_images_by_image_type(tag_id, image_type)
-        tagged_images= tagged_images[:900]
+        tagged_images= tagged_images[:700]
 
         positive_tagged_dataset = []
         negative_tagged_dataset = []
