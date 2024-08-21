@@ -323,7 +323,6 @@ async def get_all_external_image_data_list_v1(
             http_status_code=500
         )
 
-
 @router.get("/external-images/get-external-image-list-without-extracts", 
             description="Get only external images that don't have any images extracted from them. If 'dataset' parameter is set, it only returns images from that dataset, and if the 'size' parameter is set, a random sample of that size will be returned.",
             tags=["external-images"],  
@@ -368,7 +367,10 @@ async def get_external_image_list_without_extracts(request: Request, dataset: st
                 if not batch_data:  # If no more data is returned, break the loop
                     break
 
-                image_data_list.extend(batch_data)
+                for image_data in batch_data:
+                    image_data.pop('_id', None)  # Remove the auto-generated field
+                    image_data_list.append(image_data)
+                
                 accumulated_size += len(batch_data)
         else:
             # Process in batches if size is not specified
@@ -392,6 +394,7 @@ async def get_external_image_list_without_extracts(request: Request, dataset: st
             error_string=str(e),
             http_status_code=500
         )
+
 
 
 
