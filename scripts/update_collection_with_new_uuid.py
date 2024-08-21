@@ -3,7 +3,7 @@ from pymongo import MongoClient, UpdateOne
 # MongoDB connection details
 MONGO_URI = "mongodb://192.168.3.1:32017/"  # Replace with your MongoDB URI
 DATABASE_NAME = "orchestration-job-db"       # Replace with your database name
-COMPLETED_JOBS_COLLECTION = "completed-jobs"
+COMPLETED_JOBS_COLLECTION = "all-images"
 IMAGE_RANK_SCORES_COLLECTION = "image_rank_scores"
 
 # Connect to MongoDB
@@ -25,9 +25,9 @@ def add_image_uuid_to_rank_scores():
                 continue  # Skip if no image_hash is present
 
             # Find the corresponding document in completed_jobs_collection
-            job_data = completed_jobs_collection.find_one({"task_output_file_dict.output_file_hash": image_hash}, {"image_uuid": 1})
-            if job_data and "image_uuid" in job_data:
-                image_uuid = job_data["image_uuid"]
+            job_data = completed_jobs_collection.find_one({"image_hash": image_hash}, {"uuid": 1})
+            if job_data and "uuid" in job_data:
+                image_uuid = job_data["uuid"]
                 
                 # Prepare the update operation
                 update_query = {"_id": rank_score["_id"]}
