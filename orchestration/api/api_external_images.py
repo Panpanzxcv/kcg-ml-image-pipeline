@@ -328,9 +328,11 @@ async def get_all_external_image_data_list_v1(
             tags=["external-images"],  
             response_model=StandardSuccessResponseV1[List[ExternalImageData]],  
             responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
-async def get_external_image_list_without_extracts(request: Request, dataset: str=None, size: int = None):
+async def get_external_image_list_without_extracts(request: Request, dataset: str = None, size: int = None):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
+    
     try:
+        # Base query for external images
         query = {}
         if dataset:
             query['dataset'] = dataset
@@ -385,10 +387,11 @@ async def get_external_image_list_without_extracts(request: Request, dataset: st
 
         return api_response_handler.create_success_response_v1(
             response_data={"data": image_data_list},
-            http_status_code=200  
+            http_status_code=200
         )
 
     except Exception as e:
+        # Return a structured error response
         return api_response_handler.create_error_response_v1(
             error_code=ErrorCode.OTHER_ERROR, 
             error_string=str(e),
@@ -731,30 +734,14 @@ def add_tag_to_image(request: Request, tag_id: int, image_hash: str, tag_type: i
 def remove_tag_from_image(request: Request, tag_id: int, image_hash: str):
     response_handler = ApiResponseHandlerV1(request)
     try:
-
-        # Check if the tag is associated with the image with the specific image_source
-        existing_image_tag = request.app.image_tags_collection.find_one({
-            "tag_id": tag_id, 
-            "image_hash": image_hash, 
-            "image_source": external_image
-        })
-        if not existing_image_tag:
-            return response_handler.create_success_delete_response_v1(
-                False,
-                http_status_code=200
-            )
-
         # Remove the tag
-        request.app.image_tags_collection.delete_one({
+        result = request.app.image_tags_collection.delete_one({
             "tag_id": tag_id, 
             "image_hash": image_hash, 
             "image_source": external_image
         })
-
-        return response_handler.create_success_delete_response_v1(
-            True,
-            http_status_code=200
-        )
+        # Return a standard response with wasPresent set to true if there was a deletion
+        return response_handler.create_success_delete_response_v1(result.deleted_count != 0)
 
     except Exception as e:
         return response_handler.create_error_response_v1(
@@ -1497,23 +1484,8 @@ async def remove_dataset(request: Request, dataset: str = Query(...)):
 
     # Attempt to delete the dataset
     dataset_result = request.app.external_datasets_collection.delete_one({"dataset_name": dataset})
-
-    # Check if the dataset was present and deleted
-    was_present = dataset_result.deleted_count > 0
-
-    # Using the check to determine which response to send
-    if was_present:
-        # If the dataset was deleted, return True
-        return response_handler.create_success_delete_response_v1(
-            True, 
-            http_status_code=200
-        )
-    else:
-        # If the dataset was not found, return False
-        return response_handler.create_success_delete_response_v1(
-            False, 
-            http_status_code=200
-        )
+    # Return a standard response with wasPresent set to true if there was a deletion
+    return response_handler.create_success_delete_response_v1(dataset_result.deleted_count != 0)
 
 
 @router.post("/external-images/get-tag-list-for-multiple-external-images", 

@@ -453,16 +453,5 @@ def delete_image_rank_score_by_hash(
     # Adjust the query to include rank_model_id and image_source
     query = {"image_hash": image_hash, "rank_model_id": rank_model_id, "image_source": image_source}
     res = request.app.image_rank_scores_collection.delete_one(query)
-    
-    was_present = res.deleted_count > 0
-    
-    if was_present:
-        return api_response_handler.create_success_delete_response_v1(
-            True,
-            http_status_code=200
-        )
-    else:
-        return api_response_handler.create_success_delete_response_v1(
-            False,
-            http_status_code=200
-        )
+    # Return a standard response with wasPresent set to true if there was a deletion
+    return api_response_handler.create_success_delete_response_v1(res.deleted_count != 0)

@@ -338,24 +338,12 @@ def remove_image_tag(
     tag_id: int  # Now as a path parameter
 ):
     response_handler = ApiResponseHandlerV1(request)
-    
 
     # The query now checks for the specific tag_id within the array of tags and image_source
     query = {"image_hash": image_hash, "tag_id": tag_id, "image_source": generated_image}
     result = request.app.image_tags_collection.delete_one(query)
-    
-    # If no document was found and deleted, use response_handler to raise an HTTPException
-    if result.deleted_count == 0:
-        return response_handler.create_success_delete_response_v1(
-                False,
-                http_status_code=200
-            )
-
-    # Return standard success response with wasPresent: true using response_handler
-    return response_handler.create_success_delete_response_v1(
-                True,
-                http_status_code=200
-            )
+    # Return a standard response with wasPresent set to true if there was a deletion
+    return response_handler.create_success_delete_response_v1(result.deleted_count != 0)
 
 @router.delete("/tags/remove-tag-from-image-v1/{tag_id}", 
                status_code=200,
@@ -374,21 +362,8 @@ def remove_image_tag_v1(
     # The query now checks for the specific tag_id within the array of tags and image_source
     query = {"image_hash": image_hash, "tag_id": tag_id, "image_source": image_source}
     result = request.app.image_tags_collection.delete_one(query)
-    
-    # If no document was found and deleted, use response_handler to raise an HTTPException
-    if result.deleted_count == 0:
-        return response_handler.create_success_delete_response_v1(
-                False,
-                http_status_code=200
-            )
-
-    # Return standard success response with wasPresent: true using response_handler
-    return response_handler.create_success_delete_response_v1(
-                True,
-                http_status_code=200
-            )
-
-
+    # Return a standard response with wasPresent set to true if there was a deletion
+    return response_handler.create_success_delete_response_v1(result.deleted_count != 0)
 
 @router.put("/tag-categories/set-deprecated", 
               tags=["deprecated2"],
@@ -656,10 +631,7 @@ def remove_tag(request: Request, tag_id: int ):
     
     if tag is None:
         # Return standard response with wasPresent: false
-        return response_handler.create_success_delete_response_v1(
-                                                           False,
-                                                           http_status_code=200
-                                                           )
+        return response_handler.create_success_delete_response_v1(False)
 
     # Check if the tag is used in any images
     image_query = {"tag_id": tag_id}
@@ -674,13 +646,9 @@ def remove_tag(request: Request, tag_id: int ):
         )
 
     # Remove the tag
-    request.app.tag_definitions_collection.delete_one(tag_query)
-
-    # Return standard response with wasPresent: true
-    return response_handler.create_success_delete_response_v1(
-                                                       True,
-                                                       http_status_code=200
-                                                       )
+    result = request.app.tag_definitions_collection.delete_one(tag_query)
+    # Return a standard response with wasPresent set to true if there was a deletion
+    return response_handler.create_success_delete_response_v1(result.deleted_count != 0)
 
 
 @router.get("/tags/list-tag-definitions",
@@ -1589,10 +1557,7 @@ def delete_tag_category(request: Request, tag_category_id: int):
 
     if category is None:
         # Return standard response with wasPresent: false
-        return response_handler.create_success_delete_response_v1(
-                                                           False,
-                                                           http_status_code=200,
-                                                           )
+        return response_handler.create_success_delete_response_v1(False)
 
     # Check if the tag category is used in any tags
     tag_query = {"tag_category_id": tag_category_id}
@@ -1608,13 +1573,9 @@ def delete_tag_category(request: Request, tag_category_id: int):
         )
 
     # Remove the tag category
-    request.app.tag_categories_collection.delete_one(category_query)
-
-    # Return standard response with wasPresent: true
-    return response_handler.create_success_delete_response_v1(
-                                                       True,
-                                                       http_status_code=200,
-                                                       )
+    result = request.app.tag_categories_collection.delete_one(category_query)
+    # Return a standard response with wasPresent set to true if there was a deletion
+    return response_handler.create_success_delete_response_v1(result.deleted_count != 0)
 
 
 

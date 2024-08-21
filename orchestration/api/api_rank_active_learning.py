@@ -190,10 +190,7 @@ async def delete_image_rank_data_point(request: Request, file_name: str = Query(
         document = request.app.rank_active_learning_pairs_collection.find_one({"file_name": file_name})
         
         if not document:
-            return api_response_handler.create_success_delete_response_v1(
-                False, 
-                http_status_code=200
-            )
+            return api_response_handler.create_success_delete_response_v1(False)
         
         # Construct the full path of the file in MinIO
         full_path = f"ranks/{document['rank_model_id']}/active_learning_queue/{file_name}"
@@ -212,17 +209,8 @@ async def delete_image_rank_data_point(request: Request, file_name: str = Query(
 
         # Delete the document from MongoDB
         delete_result = request.app.rank_active_learning_pairs_collection.delete_one({"file_name": file_name})
-        
-        if delete_result.deleted_count == 0:
-            return api_response_handler.create_success_delete_response_v1(
-                False, 
-                http_status_code=200
-            )
-
-        return api_response_handler.create_success_delete_response_v1(
-            True, 
-            http_status_code=200
-        )
+        # Return a standard response with wasPresent set to true if there was a deletion
+        return api_response_handler.create_success_delete_response_v1(delete_result.deleted_count != 0)
     
     except Exception as e:
         print(f"Error during API execution: {str(e)}")
@@ -1122,20 +1110,9 @@ def unset_irrelevant_image(request: Request, job_uuid: str = Query(...), rank_mo
 
     # Check if the job exists in the irrelevant_images_collection
     query = {"uuid": job_uuid, "rank_model_id": rank_model_id}
-    job = request.app.irrelevant_images_collection.find_one(query)
-    if not job:
-        return api_response_handler.create_success_delete_response_v1(
-                False, 
-                http_status_code=200
-            )
-
-    # Delete the job from the irrelevant_images_collection
     result = request.app.irrelevant_images_collection.delete_one(query)
-    if result.deleted_count > 0:
-        return api_response_handler.create_success_delete_response_v1(
-            True, 
-            http_status_code=200
-        )
+    # Return a standard response with wasPresent set to true if there was a deletion
+    return api_response_handler.create_success_delete_response_v1(result.deleted_count != 0)
 
 @router.delete("/rank-training/remove-irrelevant-image-v1",
                description="Removes an image UUID from the irrelevant images collection",
@@ -1148,20 +1125,9 @@ def unset_irrelevant_image_v1(request: Request, job_uuid: str = Query(...), rank
 
     # Check if the job exists in the irrelevant_images_collection
     query = {"uuid": job_uuid, "rank_model_id": rank_model_id, "image_source": image_source}
-    job = request.app.irrelevant_images_collection.find_one(query)
-    if not job:
-        return api_response_handler.create_success_delete_response_v1(
-                False, 
-                http_status_code=200
-            )
-
-    # Delete the job from the irrelevant_images_collection
     result = request.app.irrelevant_images_collection.delete_one(query)
-    if result.deleted_count > 0:
-        return api_response_handler.create_success_delete_response_v1(
-            True, 
-            http_status_code=200
-        )
+    # Return a standard response with wasPresent set to true if there was a deletion
+    return api_response_handler.create_success_delete_response_v1(result.deleted_count != 0)
 
     
 
