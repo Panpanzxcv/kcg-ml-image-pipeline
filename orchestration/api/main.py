@@ -47,6 +47,7 @@ from orchestration.api.api_bucket import router as bucket_router
 from orchestration.api.api_all_images import router as all_images
 from orchestration.api.api_video_game import router as video_game_router
 from orchestration.api.api_clustered_image import router as image_clustered_router
+from orchestration.api.api_cluster_model import router as cluster_model_router
 from utility.minio import cmd
 
 config = dotenv_values("./orchestration/api/.env")
@@ -98,6 +99,7 @@ app.include_router(bucket_router)
 app.include_router(all_images)
 app.include_router(video_game_router)
 app.include_router(image_clustered_router)
+app.include_router(cluster_model_router)
 
 
 
@@ -537,9 +539,9 @@ def startup_db_client():
     print("Connected to the MongoDB database!")
 
     # get minio client
-    app.minio_client = get_minio_client(minio_ip_addr=config["MINIO_ADDRESS"],
-                                        minio_access_key=config["MINIO_ACCESS_KEY"],
-                                        minio_secret_key=config["MINIO_SECRET_KEY"])
+    # app.minio_client = get_minio_client(minio_ip_addr=config["MINIO_ADDRESS"],
+    #                                     minio_access_key=config["MINIO_ACCESS_KEY"],
+    #                                     minio_secret_key=config["MINIO_SECRET_KEY"])
 
 
 @app.on_event("shutdown")

@@ -1,6 +1,8 @@
 from fastapi import Request
-from datetime import date
 import sys
+
+from orchestration.api.utils.datetime_utils import get_current_datetime_str
+from orchestration.api.utils.uuid64 import Uuid64
 sys.path.insert(0, './')
 
 from orchestration.api.mongo_schema.clustering_schemas import ClusterModel
@@ -26,7 +28,8 @@ def find_cluster_model(request: Request, model_name: str, cluster_level: int):
 
 def add_cluster_model(request: Request, cluster_model: ClusterModel):
     try:
-        cluster_model.creation_date = date.today()
+        cluster_model.model_id = Uuid64.create_new_uuid().to_mongo_value()
+        cluster_model.creation_date = get_current_datetime_str()
         request.app.cluster_model_collection.insert_one(cluster_model.to_dict())
         return cluster_model.to_dict()
     except Exception as e:
@@ -39,9 +42,9 @@ def update_cluster_model(request: Request, model: ClusterModel):
     except Exception as e:
         raise Exception(f"Error while updating cluster model {model.to_dict()} in database: {e}")
     
-def delete_cluster_model_by_model_id(request: Request, id: int):
+def delete_cluster_model_by_model_id(request: Request, model_id: int):
     try:
-        result = request.app.cluster_model_collection.delete_one({"model_id": id})
+        result = request.app.cluster_model_collection.delete_one({"model_id": model_id})
         return result.deleted_count
     except Exception as e:
-        raise Exception(f"Error while deleting cluster model with model id {id} in database: {e}")
+        raise Exception(f"Error while deleting cluster model with model id {model_id    } in database: {e}")

@@ -1,5 +1,5 @@
 from fastapi import Request
-
+from typing import List
 import sys
 sys.path.insert(0, './')
 
@@ -11,20 +11,27 @@ def find_clustered_image_by_image_uuid(request: Request, image_uuid: int):
         return dict(data) if data is not None else None
     except Exception as e:
         raise Exception(f"Error while finding clustered Image with image uuid {image_uuid} in database: {e}")
-    
-def add_clustered_image(request: Request, image_data: ClusteredImageMetadata):
+
+def find_clustered_images_by_pipeline(request: Request, aggregate_pipeline: List[dict]):
     try:
-        request.app.clustered_images_collection.insert_one(image_data.to_dict())
-        return image_data.to_dict()
+        data = request.app.clustered_images_collection.aggregate(aggregate_pipeline)
+        return list(data) if data is not None else None
     except Exception as e:
-        raise Exception(f"Error while inserting clustered image data {image_data.to_dict()} in database: {e}")
-    
-def update_clustered_image(request: Request, image_data: ClusteredImageMetadata):
+        raise Exception(f"Error while finding clustered Images with aggregate_pipeline {aggregate_pipeline} in database: {e}")
+
+def add_clustered_image(request: Request, clustered_image: ClusteredImageMetadata):
     try:
-        request.app.clustered_images_collection.update_one({"id": image_data.image_uuid}, {"$set": image_data.to_dict()})
-        return image_data.to_dict()
+        request.app.clustered_images_collection.insert_one(clustered_image.to_dict())
+        return clustered_image.to_dict()
     except Exception as e:
-        raise Exception(f"Error while updating clustered image {image_data.to_dict()} in database: {e}")
+        raise Exception(f"Error while inserting clustered image data {clustered_image.to_dict()} in database: {e}")
+    
+def update_clustered_image(request: Request, clustered_image: ClusteredImageMetadata):
+    try:
+        request.app.clustered_images_collection.update_one({"id": clustered_image.image_uuid}, {"$set": clustered_image.to_dict()})
+        return clustered_image.to_dict()
+    except Exception as e:
+        raise Exception(f"Error while updating clustered image {clustered_image.to_dict()} in database: {e}")
     
 def delete_clustered_image_by_image_uuid(request: Request, image_uuid: int):
     try:

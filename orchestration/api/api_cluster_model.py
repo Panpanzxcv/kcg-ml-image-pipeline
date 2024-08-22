@@ -9,13 +9,13 @@ from orchestration.api.controller.cluster_model_repo import (
     delete_cluster_model_by_model_id,
 )
 from orchestration.api.api_utils import ApiResponseHandlerV1, StandardSuccessResponseV1, ErrorCode
-
-from datetime import date
+from orchestration.api.utils.datetime_utils import get_current_datetime_str
 
 router = APIRouter()
 
-@router.post("/add-cluster-model",
+@router.post("/cluster-model/add-cluster-model",
             description="Add a cluster model",
+            tags=["Cluster Model"],
             response_model=StandardSuccessResponseV1[ClusterModel],
             responses=ApiResponseHandlerV1.listErrors([422, 500]))
 async def add_cluster_model_endpoint(request: Request, cluster_model: ClusterModel):
@@ -27,7 +27,7 @@ async def add_cluster_model_endpoint(request: Request, cluster_model: ClusterMod
                                     cluster_level=cluster_model.cluster_level)
         
         if existed:
-            cluster_model.creation_date = date.today()
+            cluster_model.model_id = existed["model_id"]
             result = update_cluster_model(request=request, model=cluster_model)
         else:
             result = add_cluster_model(request=request, cluster_model=cluster_model)
@@ -43,8 +43,9 @@ async def add_cluster_model_endpoint(request: Request, cluster_model: ClusterMod
             http_status_code=500
         )
 
-@router.get("/get-cluster-model-by-model-id",
+@router.get("/cluster-model/get-cluster-model-by-model-id",
             description="Get cluster model by model id",
+            tags=["Cluster Model"],
             response_model=StandardSuccessResponseV1[ClusterModel],
             responses=ApiResponseHandlerV1.listErrors([404, 500]))
 async def get_cluster_model_by_model_id_endpoint(request: Request, model_id: int):
@@ -71,9 +72,10 @@ async def get_cluster_model_by_model_id_endpoint(request: Request, model_id: int
             http_status_code=500
         )
     
-@router.put("/update-cluster-model",
+@router.put("/cluster-model/update-cluster-model",
             description="Update cluster model",
-            response_model=StandardSuccessResponseV1[ClusterModel()],
+            tags=["Cluster Model"],
+            response_model=StandardSuccessResponseV1[ClusterModel],
             responses=ApiResponseHandlerV1.listErrors([404, 500]))
 async def update_cluster_model_endpoint(request: Request, model: ClusterModel):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
@@ -103,9 +105,10 @@ async def update_cluster_model_endpoint(request: Request, model: ClusterModel):
         )
 
     
-@router.delete("/delete-cluster-model-by-model-id",
+@router.delete("/cluster-model/delete-cluster-model-by-model-id",
             description="Delete cluster model by model id",
-            response_model=StandardSuccessResponseV1[ClusterModel()],
+            tags=["Cluster Model"],
+            response_model=StandardSuccessResponseV1[ClusterModel],
             responses=ApiResponseHandlerV1.listErrors([404, 500]))
 async def delete_cluster_model_by_model_id_endpoint(request: Request, model_id: int):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
