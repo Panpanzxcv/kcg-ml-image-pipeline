@@ -3,7 +3,8 @@ from fastapi import APIRouter, Query, Request
 
 from orchestration.api.controller.cluster_model_repo import find_cluster_model, find_cluster_model_by_model_id
 from orchestration.api.controller.clustered_images_repo import (
-    add_clustered_image, 
+    add_clustered_image,
+    delete_all_images, 
     find_clustered_image_by_image_uuid,
     find_clustered_images_by_pipeline,
     update_clustered_image, 
@@ -188,6 +189,34 @@ async def delete_clustered_image_by_image_uuid_endpoint(request: Request, image_
     
     try:
         deleted_count = delete_clustered_image_by_image_uuid(request=request, image_uuid=image_uuid)
+        
+        if deleted_count == 0:
+            return api_response_handler.create_success_delete_response_v1(
+                wasPresent=False,
+                http_status_code=200
+            )
+            
+        return api_response_handler.create_success_delete_response_v1(
+                wasPresent=True, 
+                http_status_code=200
+            )
+    except Exception as e:
+        return api_response_handler.create_error_response_v1(
+            error_code=ErrorCode.OTHER_ERROR, 
+            error_string=str(e),
+            http_status_code=500
+        )
+        
+@router.delete("/clustered-images/delete-all",
+            description="Delete clustered image by image uuid",
+            tags=["Clustered Image"],
+            response_model=StandardSuccessResponseV1[ClusteredImageMetadata],
+            responses=ApiResponseHandlerV1.listErrors([404, 500]))
+async def delete_all_clustered_images_endpoint(request: Request, image_uuid: int):
+    api_response_handler = await ApiResponseHandlerV1.createInstance(request)
+    
+    try:
+        deleted_count = delete_all_images(request=request)
         
         if deleted_count == 0:
             return api_response_handler.create_success_delete_response_v1(
