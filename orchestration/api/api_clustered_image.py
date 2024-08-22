@@ -59,7 +59,7 @@ async def add_clustered_image_endpoint(request: Request, clustered_image: Cluste
             tags=["Clustered Image"],
             response_model=StandardSuccessResponseV1[ClusteredImageMetadata],
             responses=ApiResponseHandlerV1.listErrors([404, 500]))
-async def get_clustered_image_by_image_uuid_endpoint(request: Request, 
+async def get_clustered_image_by_cluster_id_endpoint(request: Request, 
         model_name: str,
         cluster_id: int,
         cluster_level: int,

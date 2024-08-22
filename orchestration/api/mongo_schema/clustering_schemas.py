@@ -10,7 +10,7 @@ class ClusteredImageMetadata(BaseModel):
     image_uuid: int = Field(..., description="Image UUID (int64)")
     level: int = Field(..., description="Level")
     cluster_id: int = Field(..., description="Cluster ID(int16)")
-    distance_to_cluster: float = Field(None, description="Distance from center of cluster")
+    distance: float = Field(None, description="Distance from center of cluster")
 
     def to_dict(self):
         return {
@@ -18,7 +18,7 @@ class ClusteredImageMetadata(BaseModel):
             "image_uuid": self.image_uuid,
             "level": self.level,
             "cluster_id": self.cluster_id,
-            "distance_to_cluster": self.distance_to_cluster
+            "distance": self.distance
         }
 
 class ClusterModel(BaseModel):
