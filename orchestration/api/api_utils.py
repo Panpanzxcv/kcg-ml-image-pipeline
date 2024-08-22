@@ -787,8 +787,9 @@ def insert_into_all_images_for_completed(image_data, dataset_id, all_images_coll
 
 def check_image_usage(request, image_hash):
     """
-    Check if the image is used in a selection datapoint or has a tag assigned.
+    Check if the image is used in a selection datapoint, image pair ranking, or has a tag assigned.
     """
+    # Check if the image is used in ranking datapoints
     datapoint_usage = request.app.ranking_datapoints_collection.find_one({
         "$or": [
             {"image_1_metadata.file_hash": image_hash},
@@ -799,6 +800,18 @@ def check_image_usage(request, image_hash):
     if datapoint_usage:
         return False, "Image is used in a selection datapoint."
 
+    # Check if the image is used in image pair ranking
+    pair_ranking_usage = request.app.image_pair_ranking_collection.find_one({
+        "$or": [
+            {"image_1_metadata.file_hash": image_hash},
+            {"image_2_metadata.file_hash": image_hash}
+        ]
+    })
+
+    if pair_ranking_usage:
+        return False, "Image is used in an image pair ranking."
+
+    # Check if the image has a tag assigned
     tag_assigned = request.app.image_tags_collection.find_one({
         "image_hash": image_hash
     })
@@ -807,6 +820,7 @@ def check_image_usage(request, image_hash):
         return False, "Image has a tag assigned."
 
     return True, None
+
 
 def remove_from_additional_collections(request, image_hash, bucket_id=None, image_source=None):
     """
