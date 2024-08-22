@@ -36,7 +36,8 @@ async def add_clustered_image_endpoint(request: Request, clustered_image: Cluste
         if existed:
             return api_response_handler.create_error_response_v1(
                 error_code=ErrorCode.INVALID_PARAMS,
-                error_string=f"Clustered images with image uuid {clustered_image.image_uuid} already exists",
+                error_string=f"Clustered images with image uuid {clustered_image.image_uuid} and \
+                    model id {clustered_image.model_id} already exists",
                 http_status_code=422
             )
         
@@ -57,7 +58,7 @@ async def add_clustered_image_endpoint(request: Request, clustered_image: Cluste
         )
         
 @router.post("/clustered-images/add-clustered-image-batch",
-            description="Add a clustered image batch",
+            description="Add clustered image batch",
             tags=["Clustered Image"],
             response_model=StandardSuccessResponseV1[ListClusteredImageMetadata],
             responses=ApiResponseHandlerV1.listErrors([422, 500]))
@@ -134,13 +135,6 @@ async def get_clustered_image_by_cluster_id_endpoint(request: Request,
             aggregate_pipeline=aggregate_pipeline,
         )
 
-        if result is None:
-            return api_response_handler.create_error_response_v1(
-                error_code=ErrorCode.ELEMENT_NOT_FOUND,
-                error_string=f"No clustered image found with cluster_id {cluster_id}",
-                http_status_code=404
-            )
-
         return api_response_handler.create_success_response_v1(
             response_data=result,
             http_status_code=200
@@ -152,8 +146,8 @@ async def get_clustered_image_by_cluster_id_endpoint(request: Request,
             http_status_code=500
         )
 
-@router.get("/clustered-images/get-clustered-image-by-image-uuid",
-            description="Get a clustered image by image uuid",
+@router.get("/clustered-images/get-clustered-image",
+            description="Get a clustered image by image uuid and model id",
             tags=["Clustered Image"],
             response_model=StandardSuccessResponseV1[ClusteredImageMetadata],
             responses=ApiResponseHandlerV1.listErrors([404, 500]))
@@ -170,7 +164,7 @@ async def get_clustered_image_by_image_uuid_endpoint(request: Request, image_uui
         if result is None:
             return api_response_handler.create_error_response_v1(
                 error_code=ErrorCode.ELEMENT_NOT_FOUND,
-                error_string=f"Clustered image with image_uuid {image_uuid} does not exist",
+                error_string=f"Clustered image with image_uuid {image_uuid} and model id {model_id} does not exist",
                 http_status_code=404
             )
         
@@ -204,7 +198,8 @@ async def update_clustered_image_endpoint(request: Request, clustered_image: Clu
         if existed is None:
             return api_response_handler.create_error_response_v1(
                 error_code=ErrorCode.ELEMENT_NOT_FOUND,
-                error_string=f"Clustered image with image_uuid {clustered_image.image_uuid} does not exist",
+                error_string=f"Clustered image with image_uuid {clustered_image.image_uuid} and \
+                    model id {clustered_image.model_id} does not exist",
                 http_status_code=404
             )
         
@@ -223,16 +218,20 @@ async def update_clustered_image_endpoint(request: Request, clustered_image: Clu
         )
 
     
-@router.delete("/clustered-images/delete-clustered-image-by-image-uuid",
-            description="Delete clustered image by image uuid",
+@router.delete("/clustered-images/delete-clustered-image",
+            description="Delete clustered image by image uuid and model id",
             tags=["Clustered Image"],
             response_model=StandardSuccessResponseV1[ClusteredImageMetadata],
             responses=ApiResponseHandlerV1.listErrors([404, 500]))
-async def delete_clustered_image_by_image_uuid_endpoint(request: Request, image_uuid: int):
+async def delete_clustered_image_by_image_uuid_endpoint(request: Request, image_uuid: int, model_id: int):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
     
     try:
-        deleted_count = delete_clustered_image_by_image_uuid(request=request, image_uuid=image_uuid)
+        deleted_count = delete_clustered_image_by_image_uuid(
+            request=request, 
+            image_uuid=image_uuid,
+            model_id=model_id
+        )
         
         if deleted_count == 0:
             return api_response_handler.create_success_delete_response_v1(

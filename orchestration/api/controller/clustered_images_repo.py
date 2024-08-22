@@ -19,7 +19,7 @@ def find_clustered_image(request: Request, image_uuid: int, model_id: int):
 def find_clustered_images_by_pipeline(request: Request, aggregate_pipeline: List[dict]):
     try:
         data = request.app.clustered_images_collection.aggregate(aggregate_pipeline)
-        return list(data) if data is not None else None
+        return list(data) if data is not None else []
     except Exception as e:
         raise Exception(f"Error while finding clustered Images with aggregate_pipeline {aggregate_pipeline} in database: {e}")
 
