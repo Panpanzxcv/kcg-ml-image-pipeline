@@ -539,9 +539,9 @@ def startup_db_client():
     print("Connected to the MongoDB database!")
 
     # get minio client
-    # app.minio_client = get_minio_client(minio_ip_addr=config["MINIO_ADDRESS"],
-    #                                     minio_access_key=config["MINIO_ACCESS_KEY"],
-    #                                     minio_secret_key=config["MINIO_SECRET_KEY"])
+    app.minio_client = get_minio_client(minio_ip_addr=config["MINIO_ADDRESS"],
+                                        minio_access_key=config["MINIO_ACCESS_KEY"],
+                                        minio_secret_key=config["MINIO_SECRET_KEY"])
 
 
 @app.on_event("shutdown")
