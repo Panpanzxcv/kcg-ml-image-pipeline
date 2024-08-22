@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 from pydantic import BaseModel, Field
 
 from orchestration.api.utils.datetime_utils import get_current_datetime_str
@@ -20,6 +20,9 @@ class ClusteredImageMetadata(BaseModel):
             "cluster_id": self.cluster_id,
             "distance": self.distance
         }
+
+class ListClusteredImageMetadata(BaseModel):
+    images: List[ClusteredImageMetadata]
 
 class ClusterModel(BaseModel):
     model_id: int = Field(Uuid64.create_new_uuid().to_mongo_value(), description="Model ID (uint64)")

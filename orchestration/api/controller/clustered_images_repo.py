@@ -5,12 +5,16 @@ sys.path.insert(0, './')
 
 from orchestration.api.mongo_schema.clustering_schemas import ClusteredImageMetadata
 
-def find_clustered_image_by_image_uuid(request: Request, image_uuid: int):
+def find_clustered_image(request: Request, image_uuid: int, model_id: int):
     try:
-        data = request.app.clustered_images_collection.find_one({"image_uuid": image_uuid}, {'_id': False})
+        data = request.app.clustered_images_collection.find_one(
+            {"image_uuid": image_uuid, "model_id": model_id}, 
+            {'_id': False}
+        )
         return dict(data) if data is not None else None
     except Exception as e:
-        raise Exception(f"Error while finding clustered Image with image uuid {image_uuid} in database: {e}")
+        raise Exception(f"Error while finding clustered Image\
+            with image uuid {image_uuid} and model id {model_id} in database: {e}")
 
 def find_clustered_images_by_pipeline(request: Request, aggregate_pipeline: List[dict]):
     try:
@@ -40,9 +44,9 @@ def delete_clustered_image_by_image_uuid(request: Request, image_uuid: int):
     except Exception as e:
         raise Exception(f"Error while deleting clustered image data with image_uuid {image_uuid} in database: {e}")
 
-def delete_all_images(request: Request):
+def delete_clustered_images_by_model_id(request: Request, model_id: int):
     try:
-        result = request.app.clustered_images_collection.delete_many({})
+        result = request.app.clustered_images_collection.delete_many({"model_id": model_id})
         return result.deleted_count
     except Exception as e:
         raise Exception(f"Error while deleting all clustered images in database: {e}")
