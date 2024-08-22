@@ -9,7 +9,7 @@ from .api_utils import PrettyJSONResponse, StandardSuccessResponseV1, ApiRespons
 from .api_ranking import get_image_rank_use_count
 import os
 from .api_utils import find_or_create_next_folder_and_index
-from orchestration.api.mongo_schema.all_images_schemas import AllImagesResponse, ListAllImagesResponse
+from orchestration.api.mongo_schema.all_images_schemas import AllImagesHelpers, AllImagesResponse, ListAllImagesResponse
 import io
 from typing import List
 from PIL import Image
@@ -101,10 +101,7 @@ async def list_all_images(
 
         print(f"Number of images found: {len(images)}")
 
-        for image in images:
-            image.pop("_id", None)  # Remove the MongoDB ObjectId
-            if 'uuid' in image:
-                image['uuid'] = str(image['uuid'])  # Convert uuid to string
+        AllImagesHelpers.clean_image_list_for_api_response(images)
 
         return response_handler.create_success_response_v1(
             response_data={"images": images},
@@ -139,43 +136,12 @@ async def get_image_by_hash(request: Request, image_hash: str):
                 http_status_code=404
             )
         
-        image_data.pop('_id', None)
+        AllImagesHelpers.clean_image_for_api_response(image_data)
         # Return the found image data
         return api_response_handler.create_success_response_v1(
             response_data=image_data,
             http_status_code=200  
         )
-    
-    except Exception as e:
-        return api_response_handler.create_error_response_v1(
-            error_code=ErrorCode.OTHER_ERROR, 
-            error_string=str(e),
-            http_status_code=500
-        )
-
-@router.delete("/all-images/delete-image", 
-            description="Delete an image data",
-            tags=["all-images"],  
-            response_model=StandardSuccessResponseV1[WasPresentResponse],  
-            responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
-async def delete_image_data(request: Request, image_hash: str):
-    api_response_handler = await ApiResponseHandlerV1.createInstance(request)
-
-    try:
-        result = request.app.all_image_collection.delete_one({
-            "image_hash": image_hash
-        })
-        
-        if result.deleted_count == 0:
-            return api_response_handler.create_success_delete_response_v1(
-                False, 
-                http_status_code=200
-            )
-        
-        return api_response_handler.create_success_delete_response_v1(
-                True, 
-                http_status_code=200
-            )
     
     except Exception as e:
         return api_response_handler.create_error_response_v1(

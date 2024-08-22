@@ -71,25 +71,17 @@ async def list_buckets(request: Request):
                tags=["buckets"],
                response_model=StandardSuccessResponseV1[WasPresentResponse],  
                responses=ApiResponseHandlerV1.listErrors([422]))
-async def remove_bucket(request: Request, bucket_id: str = Query(...)):
+async def remove_bucket(request: Request, bucket_id: int = Query(...)):
     response_handler = await ApiResponseHandlerV1.createInstance(request)
+
+    if 0 <= bucket_id < 3:
+        return response_handler.create_error_response_v1(
+            error_code=ErrorCode.INVALID_PARAMS,
+            error_string='The first 3 buckets can not be removed.',
+            http_status_code=403
+        )
 
     # Attempt to delete the bucket
     bucket_result = request.app.buckets_collection.delete_one({"bucket_id": bucket_id})
-
-    # Check if the bucket was present and deleted
-    was_present = bucket_result.deleted_count > 0
-
-    # Using the check to determine which response to send
-    if was_present:
-        # If the bucket was deleted, return True
-        return response_handler.create_success_delete_response_v1(
-            True, 
-            http_status_code=200
-        )
-    else:
-        # If the bucket was not deleted, return False
-        return response_handler.create_success_delete_response_v1(
-            False, 
-            http_status_code=200
-        )
+    # Return a standard response with wasPresent set to true if there was a deletion
+    return response_handler.create_success_delete_response_v1(bucket_result.deleted_count != 0)

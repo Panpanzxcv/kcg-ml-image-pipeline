@@ -4,7 +4,7 @@ from orchestration.api.mongo_schema.extracts_schemas import ExtractsHelpers
 from utility.path import separate_bucket_and_file_path
 from .mongo_schemas import AffectedCountResponse, ExtractImageData, ListExtractImageData, Dataset, ListExtractImageDataV1, ListDataset , ListExtractImageDataWithScore, ExtractImageDataV1, ResponseExtractData
 from pymongo import ReturnDocument, UpdateOne
-from .api_utils import ApiResponseHandlerV1, StandardSuccessResponseV1, ErrorCode, WasPresentResponse, TagCountResponse, get_minio_file_path, get_next_external_dataset_seq_id, update_external_dataset_seq_id, validate_date_format, TagListForImages, TagListForImagesV1,PrettyJSONResponse, insert_into_all_images, generate_uuid
+from .api_utils import ApiResponseHandlerV1, StandardSuccessResponseV1, ErrorCode, WasPresentResponse, TagCountResponse, get_minio_file_path, get_next_external_dataset_seq_id, update_external_dataset_seq_id, validate_date_format, TagListForImages, TagListForImagesV1,PrettyJSONResponse, insert_into_all_images, generate_uuid, check_image_usage, remove_from_additional_collections, delete_files_from_minio
 from orchestration.api.mongo_schema.tag_schemas import ListExternalImageTag, ImageTag
 from datetime import datetime
 from typing import Optional
@@ -14,6 +14,8 @@ from datetime import datetime, timedelta
 import random
 from .api_clip import http_clip_server_get_cosine_similarity_list
 import time
+import os
+from utility.minio import cmd
 
 
 router = APIRouter()
@@ -85,28 +87,14 @@ async def get_next_data_batch_sequential_id(request: Request, dataset: str, comp
                status_code=200,
                responses=ApiResponseHandlerV1.listErrors([400, 422, 500]))
 async def remove_current_data_batch_sequential_id(request: Request, dataset: str ):
-
     response_handler = ApiResponseHandlerV1(request)
 
     # Check if the rank exists
     query = {"dataset": dataset}
-    sequential_id = request.app.extract_data_batch_sequential_id.find_one(query)
-    
-    if sequential_id is None:
-        # Return standard response with wasPresent: false
-        return response_handler.create_success_delete_response_v1(
-                                                           False,
-                                                           http_status_code=200
-                                                           )
-
     # Remove the sequential id
-    request.app.extract_data_batch_sequential_id.delete_one(query)
-
-    # Return standard response with wasPresent: true
-    return response_handler.create_success_delete_response_v1(
-                                                       True,
-                                                       http_status_code=200
-                                                       )
+    result = request.app.extract_data_batch_sequential_id.delete_one(query)
+    # Return a standard response with wasPresent set to true if there was a deletion
+    return response_handler.create_success_delete_response_v1(result.deleted_count != 0)
 
 @router.post("/extracts/add-extracted-image", 
             description="changed with /extracts/add-extracted-image-v1 ",
@@ -353,7 +341,7 @@ async def get_all_extracts_list_v1(request: Request, dataset: Optional[List[str]
 
     
 @router.delete("/extracts/delete-extract", 
-            description="Delete an extracted image",
+            description="Delete an extracted image if it is not used in a selection datapoint or has a tag assigned",
             tags=["extracts"],  
             response_model=StandardSuccessResponseV1[WasPresentResponse],  
             responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
@@ -361,20 +349,66 @@ async def delete_extract_image_data(request: Request, image_hash: str):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
 
     try:
-        result = request.app.extracts_collection.delete_one({
-            "image_hash": image_hash
-        })
-        
+        # Use the helper function to check image usage
+        is_safe_to_delete, error_message = check_image_usage(request, image_hash)
+
+        if not is_safe_to_delete:
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS,
+                error_string=error_message,
+                http_status_code=422
+            )
+
+        # Fetch the image document to get the file path before deletion
+        image_document = request.app.extracts_collection.find_one({"image_hash": image_hash})
+        if not image_document:
+            return api_response_handler.create_success_delete_response_v1(
+                False, 
+                http_status_code=200
+            )
+
+        # Extract the file path
+        file_path = image_document.get("file_path")
+        if not file_path:
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS,
+                error_string="No valid file path found for the image.",
+                http_status_code=422
+            )
+
+        # Remove the image data from additional collections
+        remove_from_additional_collections(request, image_hash)
+
+        # Ensure that the file path has the two necessary parts
+        path_parts = file_path.split("/", 1)
+        if len(path_parts) < 2:
+            print(f"Error: Path format is not correct for file_path: {file_path}")
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS,
+                error_string="The file path format is incorrect; expected 'bucket_name/object_name'.",
+                http_status_code=422
+            )
+
+        bucket_name = path_parts[0]
+        object_name = path_parts[1]
+
+        # Delete the related files from MinIO
+        if bucket_name and object_name:
+            delete_files_from_minio(request.app.minio_client, bucket_name, object_name)
+
+        # Finally, delete the image from the extracts_collection
+        result = request.app.extracts_collection.delete_one({"image_hash": image_hash})
+
         if result.deleted_count == 0:
             return api_response_handler.create_success_delete_response_v1(
                 False, 
                 http_status_code=200
             )
-        
+
         return api_response_handler.create_success_delete_response_v1(
-                True, 
-                http_status_code=200
-            )
+            True, 
+            http_status_code=200
+        )
     
     except Exception as e:
         return api_response_handler.create_error_response_v1(
@@ -383,29 +417,21 @@ async def delete_extract_image_data(request: Request, image_hash: str):
             http_status_code=500
         )
 
+
+
+
 @router.delete("/extracts/delete-extract-dataset", 
             description="Delete all the extracted images in a dataset",
-            tags=["extracts"],  
+            tags=["deprecated_datasets"],  
             response_model=StandardSuccessResponseV1[WasPresentResponse],  
             responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
 async def delete_extract_dataset_data(request: Request, dataset: str):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
 
     try:
-        result = request.app.extracts_collection.delete_many({
-            "dataset": dataset
-        })
-        
-        if result.deleted_count == 0:
-            return api_response_handler.create_success_delete_response_v1(
-                False, 
-                http_status_code=200
-            )
-        
-        return api_response_handler.create_success_delete_response_v1(
-                True, 
-                http_status_code=200
-            )
+        result = request.app.extracts_collection.delete_many({"dataset": dataset})
+        # Return a standard response with wasPresent set to true if there was a deletion
+        return api_response_handler.create_success_delete_response_v1(result.deleted_count != 0)
     
     except Exception as e:
         return api_response_handler.create_error_response_v1(
@@ -500,29 +526,14 @@ def add_tag_to_image(request: Request, tag_id: int, image_hash: str, tag_type: i
 def remove_tag_from_image(request: Request, tag_id: int, image_hash: str):
     response_handler = ApiResponseHandlerV1(request)
     try:
-        # Check if the tag is associated with the image with the specific image_source
-        existing_image_tag = request.app.image_tags_collection.find_one({
-            "tag_id": tag_id, 
-            "image_hash": image_hash, 
-            "image_source": extracts
-        })
-        if not existing_image_tag:
-            return response_handler.create_success_delete_response_v1(
-                False,
-                http_status_code=200
-            )
-
         # Remove the tag
-        request.app.image_tags_collection.delete_one({
+        result = request.app.image_tags_collection.delete_one({
             "tag_id": tag_id, 
             "image_hash": image_hash, 
             "image_source": extracts
         })
-
-        return response_handler.create_success_delete_response_v1(
-            True,
-            http_status_code=200
-        )
+        # Return a standard response with wasPresent set to true if there was a deletion
+        return response_handler.create_success_delete_response_v1(result.deleted_count != 0)
 
     except Exception as e:
         return response_handler.create_error_response_v1(
@@ -759,23 +770,8 @@ async def remove_dataset(request: Request, dataset: str = Query(...)):
 
     # Attempt to delete the dataset
     dataset_result = request.app.extract_datasets_collection.delete_one({"dataset_name": dataset})
-
-    # Check if the dataset was present and deleted
-    was_present = dataset_result.deleted_count > 0
-
-    # Using the check to determine which response to send
-    if was_present:
-        # If the dataset was deleted, return True
-        return response_handler.create_success_delete_response_v1(
-            True, 
-            http_status_code=200
-        )
-    else:
-        # If the dataset was not found, return False
-        return response_handler.create_success_delete_response_v1(
-            False, 
-            http_status_code=200
-        )
+    # Return a standard response with wasPresent set to true if there was a deletion
+    return response_handler.create_success_delete_response_v1(dataset_result.deleted_count != 0)
 
 
 @router.get("/extract-images/list-images",

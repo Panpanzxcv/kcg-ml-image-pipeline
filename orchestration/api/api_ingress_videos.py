@@ -211,17 +211,8 @@ async def delete_video(request: Request, video_id: str):
         result = request.app.ingress_video_collection.delete_one({
             'video_id': video_id
         })
-
-        if result.deleted_count == 0:
-            return api_response_handler.create_success_delete_response_v1(
-                wasPresent=False,
-                http_status_code=200
-            )
-        
-        return api_response_handler.create_success_delete_response_v1(
-            wasPresent=True,
-            http_status_code=200
-        )
+        # Return a standard response with wasPresent set to true if there was a deletion
+        return api_response_handler.create_success_delete_response_v1(result.deleted_count != 0)
     except Exception as e:
         return api_response_handler.create_error_response_v1(
             error_code=ErrorCode.OTHER_ERROR,

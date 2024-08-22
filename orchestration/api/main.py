@@ -303,6 +303,11 @@ def startup_db_client():
     ]
     create_index_if_not_exists(app.extracts_collection ,extracts_creation_time_index, 'extracts_creation_time_index')
 
+    extracts_old_uuid_index=[
+    ('old_uuid_string', pymongo.ASCENDING)
+    ]
+    create_index_if_not_exists(app.extracts_collection ,extracts_old_uuid_index, 'extracts_old_uuid_index')
+
     app.ingress_video_collection = app.mongodb_db["ingress_videos"]
     app.external_dataset_sequential_id = app.mongodb_db["external_dataset_sequential_id"]
 

@@ -171,19 +171,8 @@ async def delete_worker(
     try:
         # Attempt to delete the worker with the specified worker_id
         deletion_result = request.app.workers_collection.delete_one({"worker_id": worker_id})
-
-        if deletion_result.deleted_count == 0:
-            # If no worker was deleted, it means no worker was found with that ID
-            return response_handler.create_success_delete_response_v1(
-                False,
-                http_status_code=200
-            )
-
-        # If the deletion was successful, return a success response
-        return response_handler.create_success_delete_response_v1(
-            True,
-            http_status_code=200
-        )
+        # Return a standard response with wasPresent set to true if there was a deletion
+        return response_handler.create_success_delete_response_v1(deletion_result.deleted_count != 0)
     except Exception as e:
         # Handle exceptions and return an error response
         return response_handler.create_error_response_v1(

@@ -218,20 +218,14 @@ async def set_image_classifier_score(request: Request, classifier_score: Classif
                responses=ApiResponseHandlerV1.listErrors([422]))
 def delete_image_classifier_score_by_uuid(
     request: Request,
-    classifier_score_uuid: str):
+    classifier_score_uuid: str
+):
 
     api_response_handler = ApiResponseHandlerV1(request)
-    
-    query = {"uuid": classifier_score_uuid}
-    res = request.app.image_classifier_scores_collection.delete_one(query)
-    
-    was_present = res.deleted_count > 0
-    
-    # Use ApiResponseHandler to return the standardized response
-    return api_response_handler.create_success_delete_response_v1(
-        was_present,
-        http_status_code=200
-    )
+
+    res = request.app.image_classifier_scores_collection.delete_one({"uuid": classifier_score_uuid})
+    # Return a standard response with wasPresent set to true if there was a deletion
+    return api_response_handler.create_success_delete_response_v1(res.deleted_count != 0)
 
 
 @router.get("/classifier-score/list-by-scores", 
@@ -459,20 +453,8 @@ async def delete_image_classifier_score_by_uuid_and_classifier_id(
         "classifier_id": classifier_id  
     }
     res = request.app.image_classifier_scores_collection.delete_one(query)
-    
-    was_present = res.deleted_count > 0
-    
-    # Return the appropriate response based on whether an object was deleted
-    if was_present:
-        return api_response_handler.create_success_delete_response_v1(
-            True,
-            http_status_code=200
-        )
-    else:
-        return api_response_handler.create_success_delete_response_v1(
-            False,
-            http_status_code=200
-        )
+    # Return a standard response with wasPresent set to true if there was a deletion
+    return api_response_handler.create_success_delete_response_v1(res.deleted_count != 0)
 
 
 @router.get("/pseudotag-classifier-scores/list-image-by-scores", 
