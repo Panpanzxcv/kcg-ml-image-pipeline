@@ -50,14 +50,15 @@ def remove_orphaned_entries(collection, all_existing_hashes, hash_field, minio_c
         print(f"Removing {orphaned_count} orphaned documents from {collection.name}...")
         
         for doc in orphaned_docs:
-            # Remove the corresponding file from MinIO
-            file_path = doc.get("file_path") or doc.get("task_output_file_dict", {}).get("output_file_path")
-            if file_path:
-                try:
-                    bucket_name, object_name = file_path.split('/', 1)
-                    delete_files_from_minio(minio_client, bucket_name, object_name)
-                except ValueError:
-                    print(f"Error processing file path: {file_path}")
+            # Only remove the corresponding file from MinIO if in the all_image_collection
+            if collection.name == "all_image_collection":
+                file_path = doc.get("file_path") or doc.get("task_output_file_dict", {}).get("output_file_path")
+                if file_path:
+                    try:
+                        bucket_name, object_name = file_path.split('/', 1)
+                        delete_files_from_minio(minio_client, bucket_name, object_name)
+                    except ValueError:
+                        print(f"Error processing file path: {file_path}")
 
         # Remove orphaned documents from MongoDB
         collection.delete_many({hash_field: {"$nin": list(all_existing_hashes)}})
