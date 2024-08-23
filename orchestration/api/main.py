@@ -46,6 +46,8 @@ from orchestration.api.api_ingress_videos import router as ingress_videos_router
 from orchestration.api.api_bucket import router as bucket_router
 from orchestration.api.api_all_images import router as all_images
 from orchestration.api.api_video_game import router as video_game_router
+from orchestration.api.api_clustered_image import router as image_clustered_router
+from orchestration.api.api_cluster_model import router as cluster_model_router
 from utility.minio import cmd
 
 config = dotenv_values("./orchestration/api/.env")
@@ -96,6 +98,8 @@ app.include_router(ingress_videos_router)
 app.include_router(bucket_router)
 app.include_router(all_images)
 app.include_router(video_game_router)
+app.include_router(image_clustered_router)
+app.include_router(cluster_model_router)
 
 
 
@@ -251,6 +255,10 @@ def startup_db_client():
     app.tag_definitions_collection = app.mongodb_db["tag_definitions"]
     app.image_tags_collection = app.mongodb_db["image_tags"]
 
+    # image-clustering
+    app.clustered_images_collection = app.mongodb_db["clustered_images"]
+    app.cluster_model_collection = app.mongodb_db["cluster_models"]
+    
     tagged_images_hash_index=[
     ('image_hash', pymongo.ASCENDING)
     ]
