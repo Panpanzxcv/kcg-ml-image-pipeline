@@ -2,8 +2,8 @@ from typing import Optional
 from fastapi import APIRouter, Query, Request
 from pymongo import UpdateOne
 
-from orchestration.api.controller.cluster_model_repo import find_cluster_model, find_cluster_model_by_model_id
-from orchestration.api.controller.clustered_images_repo import (
+from orchestration.api.controller.cluster_model_controller import find_cluster_model, find_cluster_model_by_model_id
+from orchestration.api.controller.clustered_images_controller import (
     add_clustered_image,
     delete_clustered_images_by_model_id,
     find_clustered_image,

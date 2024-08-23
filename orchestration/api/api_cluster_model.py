@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request
 
 from orchestration.api.mongo_schema.clustering_schemas import ClusterModel
-from orchestration.api.controller.cluster_model_repo import (
+from orchestration.api.controller.cluster_model_controller import (
     add_cluster_model,
     find_cluster_model,
     find_cluster_model_by_model_id,
