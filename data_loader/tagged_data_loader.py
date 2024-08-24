@@ -210,13 +210,13 @@ class TaggedDatasetLoader:
         today = datetime.now()
 
         # Subtract one day to today's date and format as a string
-        end_date = (today - timedelta(days=1)).strftime('%Y-%m-%d')
+        end_date = (today - timedelta(days=1)).strftime('"%Y-%m-%dT%H:%M:%S"')
 
-        random_image_list = request.http_get_random_image_by_date(dataset="environmental", size=len(positive_tagged_dataset) * self.epochs, end_date=end_date)
-        # get paths only
-        for image_data in random_image_list:
-            negative_tagged_dataset.append(image_data["task_output_file_dict"]["output_file_path"])
+        negative_tagged_dataset = request.http_get_random_image_paths_by_image_type(size=len(positive_tagged_dataset) * self.epochs, end_date=end_date)
 
+        if negative_tagged_dataset is None:
+            raise Exception("No negative tagged dataset found")
+        
         # load proper input type: either clip image embedding or text embedding
         positive_tagged_features = self.load_data(positive_tagged_dataset)
         negative_tagged_features = self.load_data(negative_tagged_dataset)

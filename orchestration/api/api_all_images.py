@@ -5,11 +5,11 @@ import pymongo
 from utility.minio import cmd
 from utility.path import separate_bucket_and_file_path
 from .mongo_schemas import Task, ImageMetadata, UUIDImageMetadata, ListTask
-from .api_utils import PrettyJSONResponse, StandardSuccessResponseV1, ApiResponseHandlerV1, WasPresentResponse, ErrorCode, api_date_to_unix_int32
+from .api_utils import PrettyJSONResponse, StandardSuccessResponseV1, ApiResponseHandlerV1, WasPresentResponse, ErrorCode, api_date_to_unix_int32, build_date_query, validate_date_format
 from .api_ranking import get_image_rank_use_count
 import os
 from .api_utils import find_or_create_next_folder_and_index
-from orchestration.api.mongo_schema.all_images_schemas import AllImagesHelpers, AllImagesResponse, ListAllImagesResponse
+from orchestration.api.mongo_schema.all_images_schemas import AllImagesHelpers, AllImagesResponse, ListAllImagePathsResponse, ListAllImagesResponse
 import io
 from typing import List
 from PIL import Image
@@ -148,4 +148,72 @@ async def get_image_by_hash(request: Request, image_hash: str):
             error_code=ErrorCode.OTHER_ERROR, 
             error_string=str(e),
             http_status_code=500
+        )
+        
+
+@router.get("/all-images/get-random-image", 
+            tags = ["all-images"], 
+            description= "Get random images by image type and date range",
+            response_model=StandardSuccessResponseV1[ListAllImagePathsResponse],  
+            responses=ApiResponseHandlerV1.listErrors([404,422, 500]))
+def get_random_images_by_date_range_and_image_type(
+    request: Request,
+    image_type: str = Query('all_resolutions', description="Resolution of the images to be returned. Options: 'all_resolutions', '512*512_resolutions'"),
+    size: int = 10,
+    start_date: str = None,
+    end_date: str = None,
+):
+    response_handler = ApiResponseHandlerV1(request)
+    
+    try:
+        # Add date filters to the query
+        date_query = {}
+        if start_date:
+            start_date_unix = api_date_to_unix_int32(start_date)
+            if start_date_unix is None:
+                return response_handler.create_error_response_v1(
+                    error_code=ErrorCode.OTHER_ERROR,
+                    error_string="Invalid start_date format. Expected format: YYYY-MM-DDTHH:MM:SS",
+                    http_status_code=422
+                )
+            date_query['$gte'] = start_date_unix
+        if end_date:
+            end_date_unix = api_date_to_unix_int32(end_date)
+            if end_date_unix is None:
+                return response_handler.create_error_response_v1(
+                    error_code=ErrorCode.OTHER_ERROR,
+                    error_string="Invalid end_date format. Expected format: YYYY-MM-DDTHH:MM:SS",
+                    http_status_code=422
+                )
+            date_query['$lte'] = end_date_unix
+        query = {"date": date_query}
+        if image_type == 'all_resolutions':
+            pass
+        elif image_type == '512*512_resolutions':
+            query["bucket_id"] = {"$in": [0, 1]} # Get images from extract and datasets bucket
+        else:
+            return response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS, 
+                error_string="Invalid resolution. Options: 'all_resolutions', '512*512_resolutions", 
+                http_status_code=400,
+            )
+            
+        pipeline = [
+            {"$match": query},
+            {"$sample": {"size": size}},
+            {"$project": {"_id": 0, "image_path": 1}}
+        ]
+        
+        image_paths = list(request.app.all_image_collection.aggregate(pipeline))
+        
+        return response_handler.create_success_response_v1(
+                                                            response_data={"image_paths": image_paths}, 
+                                                            http_status_code=200,
+                                                            )
+    
+    except Exception as e:
+        # Log the exception details here, if necessary
+        print(e)
+        return response_handler.create_error_response_v1(
+            error_code=ErrorCode.OTHER_ERROR, error_string="Internal Server Error", http_status_code=500
         )

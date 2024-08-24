@@ -720,3 +720,19 @@ def http_get_random_image_by_date(dataset, size, start_date=None, end_date=None)
 
     except Exception as e:
         print('request exception ', e)
+
+
+def http_get_random_image_paths_by_image_type(size, image_type = "all_resolutions"):
+    url = SERVER_ADDRESS + "/all-images/get-random-image?image_type={}&size={}".format(image_type, size)
+    try:
+        response = requests.get(url)
+
+        if response.status_code == 200:
+            data_json = response.json()
+            return data_json["response"]["image_paths"]
+        
+
+    except Exception as e:
+        print('request exception ', e)
+        
+    return None
