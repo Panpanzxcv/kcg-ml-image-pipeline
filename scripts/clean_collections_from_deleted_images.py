@@ -3,20 +3,38 @@ from minio import Minio
 from minio.error import S3Error
 
 def get_existing_hashes(db):
-    # Fetch all image hashes from the correct collections
-    completed_jobs_hashes = set(db.completed_inpainting_jobs_collection.distinct("task_output_file_dict.output_file_hash"))
-    extracts_hashes = set(db.extracts_collection.distinct("image_hash"))
-    external_images_hashes = set(db.external_images_collection.distinct("image_hash"))
+    completed_jobs_hashes = set()
+    extracts_hashes = set()
+    external_images_hashes = set()
+
+    # Fetch image hashes from completed_inpainting_jobs_collection
+    for doc in db.completed_inpainting_jobs_collection.find({}, {"task_output_file_dict.output_file_hash": 1}):
+        image_hash = doc.get("task_output_file_dict", {}).get("output_file_hash")
+        if image_hash:
+            completed_jobs_hashes.add(image_hash)
+
+    # Fetch image hashes from extracts_collection
+    for doc in db.extracts_collection.find({}, {"image_hash": 1}):
+        image_hash = doc.get("image_hash")
+        if image_hash:
+            extracts_hashes.add(image_hash)
+
+    # Fetch image hashes from external_images_collection
+    for doc in db.external_images_collection.find({}, {"image_hash": 1}):
+        image_hash = doc.get("image_hash")
+        if image_hash:
+            external_images_hashes.add(image_hash)
 
     # Combine all hashes
     all_existing_hashes = completed_jobs_hashes.union(extracts_hashes).union(external_images_hashes)
     
     # Debugging: Print the sizes of each set
-    print(f"completed_jobs_hashes count: {len(completed_jobs_hashes)}")
-    print(f"extracts_hashes count: {len(extracts_hashes)}")
-    print(f"external_images_hashes count: {len(external_images_hashes)}")
+    print(f"Completed jobs hashes count: {len(completed_jobs_hashes)}")
+    print(f"Extracts hashes count: {len(extracts_hashes)}")
+    print(f"External images hashes count: {len(external_images_hashes)}")
     
     return all_existing_hashes
+
 
 
 def delete_files_from_minio(minio_client, bucket_name, object_name):
