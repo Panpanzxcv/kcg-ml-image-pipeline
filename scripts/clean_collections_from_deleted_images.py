@@ -2,8 +2,15 @@ from pymongo import MongoClient, UpdateOne
 from minio import Minio
 from minio.error import S3Error
 
-# Hardcoded image_hash for testing
-hardcoded_image_hash = "54ca9b9afab4105801470089babf27528b58918567da2d086b624b0661739b49"
+def get_existing_hashes(db):
+    # Fetch all image hashes from completed_jobs_collection, extracts_collection, and external_images_collection
+    completed_jobs_hashes = set(db.completed_jobs_collection.distinct("task_output_file_dict.output_file_hash"))
+    extracts_hashes = set(db.extracts_collection.distinct("image_hash"))
+    external_images_hashes = set(db.external_images_collection.distinct("image_hash"))
+
+    # Combine all hashes
+    all_existing_hashes = completed_jobs_hashes.union(extracts_hashes).union(external_images_hashes)
+    return all_existing_hashes
 
 def delete_files_from_minio(minio_client, bucket_name, object_name):
     """
@@ -35,15 +42,13 @@ def delete_files_from_minio(minio_client, bucket_name, object_name):
             raise e
 
 def remove_orphaned_entries(collection, all_existing_hashes, hash_field, minio_client):
-    orphaned_docs = collection.find({hash_field: {"$nin": list(all_existing_hashes)}})
+    # Use count_documents to get the number of orphaned documents
+    orphaned_count = collection.count_documents({hash_field: {"$nin": list(all_existing_hashes)}})
     
-    # Count orphaned documents manually
-    orphaned_count = sum(1 for _ in orphaned_docs)
-
     if orphaned_count > 0:
         print(f"Removing {orphaned_count} orphaned documents from {collection.name}...")
         
-        # Recreate the cursor since we've exhausted it while counting
+        # Recreate the cursor since we've counted the documents
         orphaned_docs = collection.find({hash_field: {"$nin": list(all_existing_hashes)}})
         
         for doc in orphaned_docs:
@@ -75,8 +80,8 @@ def main():
         secure=False
     )
 
-    # Use hardcoded image_hash for testing
-    all_existing_hashes = {hardcoded_image_hash}
+    # Get all existing hashes
+    all_existing_hashes = get_existing_hashes(db)
 
     # List of collections to clean
     collections_to_remove = [
