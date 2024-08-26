@@ -9,35 +9,26 @@ def get_existing_hashes(db):
 
     # Fetch image hashes from completed_jobs_collection
     print("Fetching from completed_jobs_collection...")
-    for doc in db.completed_jobs_collection.find({}, {"task_output_file_dict.output_file_hash": 1}):
-        image_hash = doc.get("task_output_file_dict", {}).get("output_file_hash")
-        if image_hash:
-            completed_jobs_hashes.add(image_hash)
-        else:
-            print(f"No image_hash found in document: {doc}")
-
+    try:
+        completed_jobs_hashes = set(db["completed-jobs"].distinct("task_output_file_dict.output_file_hash"))
+    except Exception as e:
+        print(f"Error fetching from completed-inpainting-jobs: {e}")
     print(f"Total hashes from completed_jobs_collection: {len(completed_jobs_hashes)}")
 
     # Fetch image hashes from extracts_collection
     print("Fetching from extracts_collection...")
-    for doc in db.extracts_collection.find({}, {"image_hash": 1}):
-        image_hash = doc.get("image_hash")
-        if image_hash:
-            extracts_hashes.add(image_hash)
-        else:
-            print(f"No image_hash found in document: {doc}")
-
+    try:
+        extracts_hashes = set(db["extracts"].distinct("image_hash"))
+    except Exception as e:
+        print(f"Error fetching from extracts_collection: {e}")
     print(f"Total hashes from extracts_collection: {len(extracts_hashes)}")
 
     # Fetch image hashes from external_images_collection
     print("Fetching from external_images_collection...")
-    for doc in db.external_images_collection.find({}, {"image_hash": 1}):
-        image_hash = doc.get("image_hash")
-        if image_hash:
-            external_images_hashes.add(image_hash)
-        else:
-            print(f"No image_hash found in document: {doc}")
-
+    try:
+        external_images_hashes = set(db["external_images"].distinct("image_hash"))
+    except Exception as e:
+        print(f"Error fetching from external_images_collection: {e}")
     print(f"Total hashes from external_images_collection: {len(external_images_hashes)}")
 
     # Combine all hashes
