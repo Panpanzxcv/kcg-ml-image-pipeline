@@ -10,15 +10,21 @@ def get_existing_hashes(db):
     # Fetch image hashes from completed_jobs_collection
     print("Fetching from completed_jobs_collection...")
     try:
-        completed_jobs_hashes = set(db["completed-jobs"].distinct("task_output_file_dict.output_file_hash"))
+        cursor = db["completed-jobs"].find({}, {"task_output_file_dict.output_file_hash": 1})
+        for doc in cursor:
+            if 'task_output_file_dict' in doc and 'output_file_hash' in doc['task_output_file_dict']:
+                completed_jobs_hashes.add(doc['task_output_file_dict']['output_file_hash'])
     except Exception as e:
-        print(f"Error fetching from completed-inpainting-jobs: {e}")
+        print(f"Error fetching from completedjobs: {e}")
     print(f"Total hashes from completed_jobs_collection: {len(completed_jobs_hashes)}")
 
     # Fetch image hashes from extracts_collection
     print("Fetching from extracts_collection...")
     try:
-        extracts_hashes = set(db["extracts"].distinct("image_hash"))
+        cursor = db["extracts"].find({}, {"image_hash": 1})
+        for doc in cursor:
+            if 'image_hash' in doc:
+                extracts_hashes.add(doc['image_hash'])
     except Exception as e:
         print(f"Error fetching from extracts_collection: {e}")
     print(f"Total hashes from extracts_collection: {len(extracts_hashes)}")
@@ -26,7 +32,10 @@ def get_existing_hashes(db):
     # Fetch image hashes from external_images_collection
     print("Fetching from external_images_collection...")
     try:
-        external_images_hashes = set(db["external_images"].distinct("image_hash"))
+        cursor = db["external_images"].find({}, {"image_hash": 1})
+        for doc in cursor:
+            if 'image_hash' in doc:
+                external_images_hashes.add(doc['image_hash'])
     except Exception as e:
         print(f"Error fetching from external_images_collection: {e}")
     print(f"Total hashes from external_images_collection: {len(external_images_hashes)}")
@@ -37,13 +46,7 @@ def get_existing_hashes(db):
     print(f"Total combined hashes: {len(all_existing_hashes)}")
     return all_existing_hashes
 
-
-
 def delete_files_from_minio(minio_client, bucket_name, object_name):
-    """
-    Delete files from MinIO. This function will attempt to delete the main file
-    and associated files. If any file is missing, it will silently continue with the next file.
-    """
     files_to_delete = [
         object_name,
         f"{object_name.rsplit('.', 1)[0]}_clip_kandinsky.msgpack",
@@ -59,27 +62,20 @@ def delete_files_from_minio(minio_client, bucket_name, object_name):
             print(f"Removed {file} from {bucket_name}")
         except S3Error as e:
             if e.code == 'NoSuchKey':
-                # Silently continue if the file does not exist
                 continue
             else:
-                # Raise the exception if it's any other error
                 raise e
         except Exception as e:
-            # Raise the exception for any other general errors
             raise e
 
 def remove_orphaned_entries(collection, all_existing_hashes, hash_field, minio_client):
-    # Use count_documents to get the number of orphaned documents
     orphaned_count = collection.count_documents({hash_field: {"$nin": list(all_existing_hashes)}})
     
     if orphaned_count > 0:
         print(f"Removing {orphaned_count} orphaned documents from {collection.name}...")
-        
-        # Recreate the cursor since we've counted the documents
         orphaned_docs = collection.find({hash_field: {"$nin": list(all_existing_hashes)}})
         
         for doc in orphaned_docs:
-            # Only remove the corresponding file from MinIO if in the all_image_collection
             if collection.name == "all_image_collection":
                 file_path = doc.get("file_path") or doc.get("task_output_file_dict", {}).get("output_file_path")
                 if file_path:
@@ -89,17 +85,14 @@ def remove_orphaned_entries(collection, all_existing_hashes, hash_field, minio_c
                     except ValueError:
                         print(f"Error processing file path: {file_path}")
 
-        # Remove orphaned documents from MongoDB
         collection.delete_many({hash_field: {"$nin": list(all_existing_hashes)}})
     else:
         print(f"No orphaned documents found in {collection.name}.")
 
 def main():
-    # Connect to MongoDB
     client = MongoClient("mongodb://192.168.3.1:32017/")
-    db = client["orchestration-job-db"]  
+    db = client["orchestration-job-db"]
 
-    # Connect to MinIO
     minio_client = Minio(
         "192.168.3.5:9000",  
         access_key="v048BpXpWrsVIHUfdAix",  
@@ -107,12 +100,9 @@ def main():
         secure=False
     )
 
-    # Get all existing hashes
     all_existing_hashes = get_existing_hashes(db)
     print(f"Total existing hashes: {len(all_existing_hashes)}")
 
-
-    # List of collections to clean
     collections_to_remove = [
         db.image_tags_collection,
         db.all_image_collection,
@@ -124,12 +114,11 @@ def main():
         db.image_residual_percentiles_collection,
         db.image_rank_use_count_collection,
         db.image_pair_ranking_collection,
-        db.irrelevant_images_collection,  # This uses "file_hash" instead of "image_hash"
+        db.irrelevant_images_collection,
         db.image_hashes_collection,
         db.ranking_datapoints_collection,
     ]
 
-    # Iterate through the collections and remove orphaned documents
     for collection in collections_to_remove:
         hash_field = "image_hash"
         if collection.name == "irrelevant_images_collection":
