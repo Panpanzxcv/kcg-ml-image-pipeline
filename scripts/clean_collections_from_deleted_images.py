@@ -94,8 +94,8 @@ def remove_orphaned_entries(collection, all_existing_hashes, hash_field, minio_c
 
 def main():
     # Connect to MongoDB
-    client = MongoClient('mongodb://192.168.3.1:32017/')
-    db = client['orchestration-job-db']  
+    client = MongoClient("mongodb://192.168.3.1:32017/")
+    db = client["orchestration-job-db"]  
 
     # Connect to MinIO
     minio_client = Minio(
