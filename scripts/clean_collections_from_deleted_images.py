@@ -3,7 +3,7 @@ from minio import Minio
 from minio.error import S3Error
 
 # Hardcoded image_hash for testing
-hardcoded_image_hash = "ad2888bcca00e2b210ea8e226eb95fb5dd3155fc3201b389e42081a199418071"
+hardcoded_image_hash = "54ca9b9afab4105801470089babf27528b58918567da2d086b624b0661739b49"
 
 def delete_files_from_minio(minio_client, bucket_name, object_name):
     """
