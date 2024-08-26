@@ -7,13 +7,13 @@ def process_collection(collection, minio_client, all_existing_hashes, hash_field
     Process each collection in batches to avoid DocumentTooLarge errors.
     """
     batch_size = 2000
-    orphaned_docs = collection.find({hash_field: {"$nin": list(all_existing_hashes)}}).batch_size(batch_size)
-    orphaned_count = orphaned_docs.count()
+    orphaned_docs_cursor = collection.find({hash_field: {"$nin": list(all_existing_hashes)}}).batch_size(batch_size)
+    orphaned_count = collection.count_documents({hash_field: {"$nin": list(all_existing_hashes)}})
 
     if orphaned_count > 0:
         print(f"Removing {orphaned_count} orphaned documents from {collection.name}...")
 
-        for doc in orphaned_docs:
+        for doc in orphaned_docs_cursor:
             if collection.name == "all_image_collection":
                 file_path = doc.get("file_path") or doc.get("task_output_file_dict", {}).get("output_file_path")
                 if file_path:
@@ -23,6 +23,7 @@ def process_collection(collection, minio_client, all_existing_hashes, hash_field
                     except ValueError:
                         print(f"Error processing file path: {file_path}")
 
+        # Remove the orphaned documents
         collection.delete_many({hash_field: {"$nin": list(all_existing_hashes)}})
     else:
         print(f"No orphaned documents found in {collection.name}.")
