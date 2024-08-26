@@ -3,14 +3,21 @@ from minio import Minio
 from minio.error import S3Error
 
 def get_existing_hashes(db):
-    # Fetch all image hashes from completed_jobs_collection, extracts_collection, and external_images_collection
-    completed_jobs_hashes = set(db.completed_jobs_collection.distinct("task_output_file_dict.output_file_hash"))
+    # Fetch all image hashes from the correct collections
+    completed_jobs_hashes = set(db.completed_inpainting_jobs_collection.distinct("task_output_file_dict.output_file_hash"))
     extracts_hashes = set(db.extracts_collection.distinct("image_hash"))
     external_images_hashes = set(db.external_images_collection.distinct("image_hash"))
 
     # Combine all hashes
     all_existing_hashes = completed_jobs_hashes.union(extracts_hashes).union(external_images_hashes)
+    
+    # Debugging: Print the sizes of each set
+    print(f"completed_jobs_hashes count: {len(completed_jobs_hashes)}")
+    print(f"extracts_hashes count: {len(extracts_hashes)}")
+    print(f"external_images_hashes count: {len(external_images_hashes)}")
+    
     return all_existing_hashes
+
 
 def delete_files_from_minio(minio_client, bucket_name, object_name):
     """
