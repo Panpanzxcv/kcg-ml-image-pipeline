@@ -82,6 +82,8 @@ def main():
 
     # Get all existing hashes
     all_existing_hashes = get_existing_hashes(db)
+    print(f"Total existing hashes: {len(all_existing_hashes)}")
+
 
     # List of collections to clean
     collections_to_remove = [
