@@ -7,32 +7,43 @@ def get_existing_hashes(db):
     extracts_hashes = set()
     external_images_hashes = set()
 
-    # Fetch image hashes from completed_inpainting_jobs_collection
-    for doc in db.completed_inpainting_jobs_collection.find({}, {"task_output_file_dict.output_file_hash": 1}):
+    # Fetch image hashes from completed_jobs_collection
+    print("Fetching from completed_jobs_collection...")
+    for doc in db.completed_jobs_collection.find({}, {"task_output_file_dict.output_file_hash": 1}):
         image_hash = doc.get("task_output_file_dict", {}).get("output_file_hash")
         if image_hash:
             completed_jobs_hashes.add(image_hash)
+        else:
+            print(f"No image_hash found in document: {doc}")
+
+    print(f"Total hashes from completed_jobs_collection: {len(completed_jobs_hashes)}")
 
     # Fetch image hashes from extracts_collection
+    print("Fetching from extracts_collection...")
     for doc in db.extracts_collection.find({}, {"image_hash": 1}):
         image_hash = doc.get("image_hash")
         if image_hash:
             extracts_hashes.add(image_hash)
+        else:
+            print(f"No image_hash found in document: {doc}")
+
+    print(f"Total hashes from extracts_collection: {len(extracts_hashes)}")
 
     # Fetch image hashes from external_images_collection
+    print("Fetching from external_images_collection...")
     for doc in db.external_images_collection.find({}, {"image_hash": 1}):
         image_hash = doc.get("image_hash")
         if image_hash:
             external_images_hashes.add(image_hash)
+        else:
+            print(f"No image_hash found in document: {doc}")
+
+    print(f"Total hashes from external_images_collection: {len(external_images_hashes)}")
 
     # Combine all hashes
     all_existing_hashes = completed_jobs_hashes.union(extracts_hashes).union(external_images_hashes)
-    
-    # Debugging: Print the sizes of each set
-    print(f"Completed jobs hashes count: {len(completed_jobs_hashes)}")
-    print(f"Extracts hashes count: {len(extracts_hashes)}")
-    print(f"External images hashes count: {len(external_images_hashes)}")
-    
+
+    print(f"Total combined hashes: {len(all_existing_hashes)}")
     return all_existing_hashes
 
 
