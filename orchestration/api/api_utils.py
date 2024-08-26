@@ -858,7 +858,7 @@ def remove_from_additional_collections(request, image_hash, bucket_id, image_sou
                             request.app.image_classifier_scores_collection, 
                             request.app.irrelevant_images_collection]:
             if collection == request.app.irrelevant_images_collection:
-                query = {"file_hash": image_hash}
+                query = {"file_hash": image_hash, "image_source": image_source}
             else:
                 query = {"image_hash": image_hash, "image_source": image_source}
             print(f"Removing documents with {query} from {collection.name}")
@@ -870,6 +870,7 @@ def remove_from_additional_collections(request, image_hash, bucket_id, image_sou
         # Execute deletion
         result = collection.delete_many(query)
         print(f"Deleted {result.deleted_count} documents from {collection.name}")
+
 
 
 

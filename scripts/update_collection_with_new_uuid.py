@@ -29,8 +29,8 @@ def add_image_uuid_to_rank_scores():
                 continue  # Skip if image_uuid is already present
 
             # Find the corresponding document in completed_jobs_collection
-            job_data = completed_jobs_collection.find_one({"image_hash": image_hash}, {"uuid": 1})
-            if job_data and "uuid" in job_data:
+            job_data = completed_jobs_collection.find_one({"image_hash": image_hash}, {"uuid": 1, "image_source": 1})
+            if job_data and "uuid" in job_data and "image_source" in job_data:
                 image_uuid = job_data["uuid"]
                 
                 # Prepare the update operation
@@ -38,7 +38,6 @@ def add_image_uuid_to_rank_scores():
                 update_data = {"$set": {"image_uuid": image_uuid}}
                 bulk_operations.append(UpdateOne(update_query, update_data))
                 
-                print(f"Preparing to update document with _id: {rank_score['_id']}, setting image_uuid: {image_uuid}")
 
             else:
                 print(f"No matching job found for image_hash: {image_hash}")
