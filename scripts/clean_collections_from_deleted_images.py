@@ -2,15 +2,8 @@ from pymongo import MongoClient, UpdateOne
 from minio import Minio
 from minio.error import S3Error
 
-def get_existing_hashes(db):
-    # Fetch all image hashes from completed_jobs_collection, extracts_collection, and external_images_collection
-    completed_jobs_hashes = set(db.completed_jobs_collection.distinct("task_output_file_dict.output_file_hash"))
-    extracts_hashes = set(db.extracts_collection.distinct("image_hash"))
-    external_images_hashes = set(db.external_images_collection.distinct("image_hash"))
-
-    # Combine all hashes
-    all_existing_hashes = completed_jobs_hashes.union(extracts_hashes).union(external_images_hashes)
-    return all_existing_hashes
+# Hardcoded image_hash for testing
+hardcoded_image_hash = "ad2888bcca00e2b210ea8e226eb95fb5dd3155fc3201b389e42081a199418071"
 
 def delete_files_from_minio(minio_client, bucket_name, object_name):
     """
@@ -78,8 +71,8 @@ def main():
         secure=False
     )
 
-    # Get all existing hashes
-    all_existing_hashes = get_existing_hashes(db)
+    # Use hardcoded image_hash for testing
+    all_existing_hashes = {hardcoded_image_hash}
 
     # List of collections to clean
     collections_to_remove = [
