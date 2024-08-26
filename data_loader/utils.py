@@ -106,6 +106,7 @@ def get_object(client, file_path):
     return data
 
 def get_object_with_bucket(client, bucket_name, file_path):
+    response = None
     try:
         response = client.get_object(bucket_name, file_path)
         data = response.data

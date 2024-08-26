@@ -723,7 +723,7 @@ def http_get_random_image_by_date(dataset, size, start_date=None, end_date=None)
 
 
 def http_get_random_image_paths_by_image_type(size, image_type = "all_resolutions"):
-    url = SERVER_ADDRESS + "/all-images/get-random-image?image_type={}&size={}".format(image_type, size)
+    url = "http://127.0.0.1:8000" + "/all-images/get-random-image?image_type={}&size={}".format(image_type, size)
     try:
         response = requests.get(url)
 
