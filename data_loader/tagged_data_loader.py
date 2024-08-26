@@ -89,11 +89,13 @@ class TaggedDatasetLoader:
         file_path = path.replace(".jpg", input_type_extension)
         bucket_name, file_path = separate_bucket_and_file_path(file_path)
         
+        features_data = None
         try:
             features_data = get_object_with_bucket(self.minio_client, bucket_name, file_path)
         except Exception as e:
             print(f"Error: {e} when loading {file_path}")
-        
+        if features_data is None:
+            return None, index
         features_data = msgpack.unpackb(features_data)
         features_vector = []
 
@@ -142,6 +144,8 @@ class TaggedDatasetLoader:
                 feature, index = future.result()
                 if feature is not None:
                     data_features[index] = feature
+                else:
+                    return None, index
 
         if pre_shuffle:
             # shuffle
@@ -212,10 +216,7 @@ class TaggedDatasetLoader:
         # Subtract one day to today's date and format as a string
         end_date = (today - timedelta(days=1)).strftime('"%Y-%m-%dT%H:%M:%S"')
 
-        negative_tagged_dataset = request.http_get_random_image_paths_by_image_type(size=len(positive_tagged_dataset) * self.epochs, end_date=end_date)
-
-        if negative_tagged_dataset is None:
-            raise Exception("No negative tagged dataset found")
+        negative_tagged_dataset = request.http_get_random_image_paths_by_image_type(size=len(positive_tagged_dataset) * self.epochs, image_type=image_type)
         
         # load proper input type: either clip image embedding or text embedding
         positive_tagged_features = self.load_data(positive_tagged_dataset)

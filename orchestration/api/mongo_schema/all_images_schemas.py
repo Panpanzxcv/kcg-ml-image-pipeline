@@ -19,6 +19,9 @@ class AllImagesResponse(BaseModel):
 class ListAllImagesResponse(BaseModel):
     images: List[AllImagesResponse]
 
+class ListAllImagePathsResponse(BaseModel):
+    image_paths: List[str]
+
 class AllImagesHelpers():
     @staticmethod
     def clean_image_for_api_response(data: dict):

@@ -151,6 +151,7 @@ async def get_image_by_hash(request: Request, image_hash: str):
         )
         
 
+
 @router.get("/all-images/get-random-image", 
             tags = ["all-images"], 
             description= "Get random images by image type and date range",
@@ -186,7 +187,10 @@ def get_random_images_by_date_range_and_image_type(
                     http_status_code=422
                 )
             date_query['$lte'] = end_date_unix
-        query = {"date": date_query}
+        if start_date or end_date:
+            query = {"date": date_query}
+        else:
+            query = {}
         if image_type == 'all_resolutions':
             pass
         elif image_type == '512*512_resolutions':
@@ -204,8 +208,8 @@ def get_random_images_by_date_range_and_image_type(
             {"$project": {"_id": 0, "image_path": 1}}
         ]
         
-        image_paths = list(request.app.all_image_collection.aggregate(pipeline))
-        
+        images = list(request.app.all_image_collection.aggregate(pipeline))
+        image_paths = [image['image_path'] for image in images]
         return response_handler.create_success_response_v1(
                                                             response_data={"image_paths": image_paths}, 
                                                             http_status_code=200,
