@@ -37,10 +37,14 @@ def delete_files_from_minio(minio_client, bucket_name, object_name):
 def remove_orphaned_entries(collection, all_existing_hashes, hash_field, minio_client):
     orphaned_docs = collection.find({hash_field: {"$nin": list(all_existing_hashes)}})
     
-    orphaned_count = orphaned_docs.count()
-    
+    # Count orphaned documents manually
+    orphaned_count = sum(1 for _ in orphaned_docs)
+
     if orphaned_count > 0:
         print(f"Removing {orphaned_count} orphaned documents from {collection.name}...")
+        
+        # Recreate the cursor since we've exhausted it while counting
+        orphaned_docs = collection.find({hash_field: {"$nin": list(all_existing_hashes)}})
         
         for doc in orphaned_docs:
             # Only remove the corresponding file from MinIO if in the all_image_collection
