@@ -706,7 +706,7 @@ async def set_image_classifier_score_list(request: Request, classifier_score_lis
     try:
         for classifier_score in classifier_score_list:
             # Fetch image_hash from completed_jobs_collection
-            job_data = request.app.completed_jobs_collection.find_one({"uuid": classifier_score.job_uuid}, {"task_output_file_dict.output_file_hash": 1})
+            job_data = request.app.completed_jobs_collection.find_one({"uuid": classifier_score.job_uuid},  {"task_output_file_dict.output_file_hash": 1, "task_type": 1, "image_uuid": 1})
             if not job_data or 'task_output_file_dict' not in job_data or 'output_file_hash' not in job_data['task_output_file_dict']:
                 return api_response_handler.create_error_response_v1(
                     error_code=ErrorCode.INVALID_PARAMS,

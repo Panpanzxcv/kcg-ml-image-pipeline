@@ -14,21 +14,21 @@ router = APIRouter()
              tags=['deprecated3'], 
              description="changed with /image-scores/scores/set-rank-score")
 async def set_image_rank_score(request: Request, ranking_score: RankingScore):
-    # Check if image exists in the completed_jobs_collection
+    # Check if image exists in the completed_jobs_collection using the provided uuid
     image_data = request.app.completed_jobs_collection.find_one(
-        {"task_output_file_dict.output_file_hash": ranking_score.image_hash},
-        {"task_output_file_dict.output_file_hash": 1}
+        {"uuid": ranking_score.uuid},
+        {"image_uuid": 1}
     )
     if not image_data:
-        raise HTTPException(status_code=404, detail="Image with the given hash not found in completed jobs collection.")
+        raise HTTPException(status_code=404, detail="Image with the given uuid not found in completed jobs collection.")
 
-    image_uuid = image_data.get('image_uuid', None)
+    image_uuid = image_data.get('uuid', None)
 
     # Check if the score already exists in image_rank_scores_collection
-    query = {"image_hash": ranking_score.image_hash, "rank_model_id": ranking_score.rank_model_id}
+    query = {"uuid": ranking_score.uuid, "rank_model_id": ranking_score.rank_model_id}
     count = request.app.image_rank_scores_collection.count_documents(query)
     if count > 0:
-        raise HTTPException(status_code=409, detail="Score for specific rank_model_id and image_hash already exists.")
+        raise HTTPException(status_code=409, detail="Score for specific rank_model_id and uuid already exists.")
 
     # Add the image_source property set to "generated_image"
     ranking_score_data = ranking_score.dict()
@@ -97,7 +97,7 @@ async def set_image_rank_score(
     if image_source == "generated_image":
         image_data = collection.find_one(
             image_query,
-            {"task_output_file_dict.output_file_hash": 1}
+            {"task_output_file_dict.output_file_hash": 1, "image_uuid": 1}
         )
         if not image_data or 'task_output_file_dict' not in image_data or 'output_file_hash' not in image_data['task_output_file_dict']:
             return api_response_handler.create_error_response_v1(
@@ -107,7 +107,7 @@ async def set_image_rank_score(
             )
         image_hash = image_data['task_output_file_dict']['output_file_hash']
     else:
-        image_data = collection.find_one(image_query, {"image_hash": 1})
+        image_data = collection.find_one(image_query, {"image_hash": 1, "image_uuid": 1})
         if not image_data:
             return api_response_handler.create_error_response_v1(
                 error_code=ErrorCode.INVALID_PARAMS,
@@ -128,7 +128,7 @@ async def set_image_rank_score(
     if count > 0:
         return api_response_handler.create_error_response_v1(
             error_code=ErrorCode.INVALID_PARAMS,
-            error_string="Score for specific uuid, rank_model_id and image_hash already exists.",
+            error_string="Score for specific uuid, rank_model_id, and image_hash already exists.",
             http_status_code=400
         )
 
@@ -146,6 +146,7 @@ async def set_image_rank_score(
         response_data=ranking_score_data,
         http_status_code=201  
     )
+
 
 @router.post("/image-scores/scores/set-rank-score-batch", 
              status_code=200,
