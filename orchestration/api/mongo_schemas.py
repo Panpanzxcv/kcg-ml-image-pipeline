@@ -1,3 +1,4 @@
+from fastapi import Query
 from pydantic import BaseModel, Field, constr, validator, model_validator, RootModel
 from typing import List, Union, Optional, Dict
 import json
@@ -884,3 +885,19 @@ class ListVideoGame(BaseModel):
     
 class ListVideoMetaData(BaseModel):
     data: List[VideoMetaData]
+
+class BinRankingScore(BaseModel):
+    uuid: str
+    rank_model_id: int
+    rank_id: int
+    score: float
+    sigma_score: float
+    bucket_id: int
+    dataset_id: int
+    image_hash: str
+    image_path: str
+    
+class Bin(BaseModel):
+    min_score: float
+    max_score: float
+    items: List[BinRankingScore] = Query(default=[], description="List of ranking scores in the bin")

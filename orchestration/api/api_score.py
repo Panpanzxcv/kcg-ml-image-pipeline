@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta
+import random
 import uuid
 from fastapi import Request, APIRouter, HTTPException, Query
-from typing import Optional
+from typing import List, Optional
 
 from pymongo import UpdateOne
-from orchestration.api.mongo_schemas import RankingScore, ResponseRankingScore, ListRankingScore, ListOnlyRankingScore
+from orchestration.api.mongo_schemas import Bin, RankingScore, ResponseRankingScore, ListRankingScore, ListOnlyRankingScore
 from .api_utils import ApiResponseHandler, ErrorCode, StandardSuccessResponse, WasPresentResponse, ApiResponseHandlerV1, StandardSuccessResponseV1
 
 router = APIRouter()
@@ -449,3 +450,124 @@ def delete_image_rank_score_by_hash(
     res = request.app.image_rank_scores_collection.delete_one(query)
     # Return a standard response with wasPresent set to true if there was a deletion
     return api_response_handler.create_success_delete_response_v1(res.deleted_count != 0)
+
+
+@router.delete("/image-scores/scores/list-rank-scores-with-binning", 
+               description="Get images grouped by rank score with binning",
+               status_code=200,
+               tags=["image scores"], 
+               response_model=StandardSuccessResponseV1[WasPresentResponse],
+               responses=ApiResponseHandlerV1.listErrors([422]))
+def get_images_grouped_by_rank_score_with_binning(
+    request: Request, 
+    rank_model_id: int, 
+    score_field: str = Query(..., description="Score field for selecting if the data must be sorted by score or sigma score."),
+    bins: List[Bin] = Query(..., description="List of bins for grouping images"),
+    min_score: float = Query(None, description="Minimum score for filtering"),
+    max_score: float = Query(None, description="Maximum score for filtering"),
+    bucket_ids: Optional[List[int]] = Query(None, description="Bucket IDs"),
+    dataset_ids: Optional[List[int]] = Query(None, description="Dataset IDs"),
+    sample_size: int = Query(None, description="Sample size for random sampling"),
+    max_count: int = Query(20, description="max count of returned images"),
+):
+    api_response_handler = ApiResponseHandlerV1(request)
+    try:
+        # Check if rank_id exists in rank_collection
+        model_exists = request.app.rank_collection.find_one(
+            {"rank_model_id": rank_model_id},
+            {"_id": 1}
+        )
+        if not model_exists:
+            return api_response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS,
+                error_string="The provided rank_model_id does not exist in rank_collection.",
+                http_status_code=400
+            )
+        
+        # Add the OR conditions for buckets and datasets
+        if bucket_ids or dataset_ids:
+            query_conditions = []
+            if bucket_ids:
+                query_conditions.append({"bucket_id": {"$in": bucket_ids}})
+            if dataset_ids:
+                query_conditions.append({"dataset_id": {"$in": dataset_ids}})
+            if query_conditions:
+                all_images_query = {"$or": query_conditions}
+        
+        score_data = []
+        for bin in bins:
+            rank_score_query = {}
+            min_score = bin.min_score
+            max_score = bin.max_score
+            
+            if min_score and max_score:
+                rank_score_query['score'] = {
+                    '$gte': min_score,
+                    '$lte': max_score
+                }
+            elif min_score:
+                rank_score_query['score'] = { '$gte': min_score }
+            elif max_score:
+                rank_score_query['score'] = { '$lte': max_score }
+            rank_score_query['score_field'] = score_field
+            
+            # Modify behavior based on random_sampling parameter
+            items = request.app.image_rank_scores_collection.aggregate([
+                {
+                    "$match": {
+                        "rank_model_id": rank_model_id,
+                        "score": {"$gte": min_score, "$lte": max_score}
+                    }
+                },
+                {
+                    "$lookup": {
+                        "from": "all-images",
+                        "localField": "uuid",
+                        "foreignField": "uuid",
+                        "as": "matchedB"
+                    }
+                },
+                {
+                    "$unwind": "$matchedB"
+                },
+                {
+                    "$match": {
+                        "$or": [
+                            {"matchedB.dataset_id": {"$in": dataset_ids}} if dataset_ids else {},
+                            {"matchedB.bucket_id": {"$in": bucket_ids}} if bucket_ids else {}
+                        ]
+                    }
+                },
+                {
+                    "$project": {
+                        "uuid": 1,
+                        "rank_model_id": 1,
+                        "rank_id": 1,
+                        "score": 1,
+                        "sigma_score": 1,
+                        "bucket_id": "$matchedB.bucket_id",
+                        "dataset_id": "$matchedB.dataset_id",
+                        "image_hash": "$matchedB.image_hash",
+                        "image_path": "$matchedB.image_path",
+                    }
+                }
+            ])
+            
+            if len(items) > max_count:
+                skip = random.randint(0, len(items) - max_count)
+                bin.items = items[skip::skip + max_count]
+
+            score_data.append(bin)
+        
+        # Return a standardized success response with the score data
+        return api_response_handler.create_success_response_v1(
+            response_data={'scores': score_data},
+            http_status_code=200
+        )
+        
+    except Exception as e:
+        return api_response_handler.create_error_response_v1(
+            error_code=ErrorCode.OTHER_ERROR, 
+            error_string=str(e),
+            http_status_code=500
+        )
