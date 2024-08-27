@@ -2,39 +2,31 @@ from pymongo import MongoClient, UpdateOne
 from minio import Minio
 from minio.error import S3Error
 
-def process_collection(collection, minio_client, all_existing_hashes, hash_field, chunk_size=1000):
+def process_collection(collection, minio_client, all_existing_hashes, hash_field):
     """
-    Process each collection in chunks to avoid DocumentTooLarge errors.
+    Process each collection in batches to avoid DocumentTooLarge errors.
     """
-    orphaned_count = 0
+    batch_size = 2000
+    orphaned_docs_cursor = collection.find({hash_field: {"$nin": list(all_existing_hashes)}}).batch_size(batch_size)
+    orphaned_count = collection.count_documents({hash_field: {"$nin": list(all_existing_hashes)}})
 
-    # Process in chunks
-    for i in range(0, len(all_existing_hashes), chunk_size):
-        chunk = list(all_existing_hashes)[i:i + chunk_size]
-        orphaned_docs_cursor = collection.find({hash_field: {"$nin": chunk}}).batch_size(2000)
+    if orphaned_count > 0:
+        print(f"Removing {orphaned_count} orphaned documents from {collection.name}...")
 
-        orphaned_chunk_count = orphaned_docs_cursor.count()
-        orphaned_count += orphaned_chunk_count
+        for doc in orphaned_docs_cursor:
+            if collection.name == "all_image_collection":
+                file_path = doc.get("file_path") or doc.get("task_output_file_dict", {}).get("output_file_path")
+                if file_path:
+                    try:
+                        bucket_name, object_name = file_path.split('/', 1)
+                        delete_files_from_minio(minio_client, bucket_name, object_name)
+                    except ValueError:
+                        print(f"Error processing file path: {file_path}")
 
-        if orphaned_chunk_count > 0:
-            print(f"Removing {orphaned_chunk_count} orphaned documents from {collection.name} in chunk {i//chunk_size + 1}...")
-
-            for doc in orphaned_docs_cursor:
-                if collection.name == "all_image_collection":
-                    file_path = doc.get("file_path") or doc.get("task_output_file_dict", {}).get("output_file_path")
-                    if file_path:
-                        try:
-                            bucket_name, object_name = file_path.split('/', 1)
-                            delete_files_from_minio(minio_client, bucket_name, object_name)
-                        except ValueError:
-                            print(f"Error processing file path: {file_path}")
-
-            # Remove the orphaned documents in this chunk
-            collection.delete_many({hash_field: {"$nin": chunk}})
-        else:
-            print(f"No orphaned documents found in {collection.name} for chunk {i//chunk_size + 1}.")
-
-    print(f"Total orphaned documents removed from {collection.name}: {orphaned_count}")
+        # Remove the orphaned documents
+        collection.delete_many({hash_field: {"$nin": list(all_existing_hashes)}})
+    else:
+        print(f"No orphaned documents found in {collection.name}.")
 
 def get_existing_hashes(db):
     completed_jobs_hashes = set()
