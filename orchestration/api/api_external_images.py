@@ -323,7 +323,6 @@ async def get_all_external_image_data_list_v1(
             http_status_code=500
         )
 
-
 @router.get("/external-images/get-external-image-list-without-extracts", 
             description="Get only external images that don't have any images extracted from them. If 'dataset' parameter is set, it only returns images from that dataset, and if the 'size' parameter is set, a random sample of that size will be returned.",
             tags=["external-images"],  
@@ -376,6 +375,9 @@ async def get_external_image_list_without_extracts(request: Request, dataset: st
             http_status_code=500
         )
 
+
+
+
 @router.delete("/external-images/delete-external-image", 
             description="Delete an external image data if it's not used in a selection datapoint or has a tag assigned",
             tags=["external-images"],  
@@ -413,7 +415,7 @@ async def delete_external_image_data(request: Request, image_hash: str):
             )
 
         # Remove the image data from additional collections
-        remove_from_additional_collections(request, image_hash)
+        remove_from_additional_collections(request, image_hash, bucket_id=2, image_source="external_image")
 
         path_parts = file_path.split("/", 1)
         if len(path_parts) < 2:
@@ -493,7 +495,7 @@ async def delete_external_image_data_list(request: Request, image_hash_list: Lis
                 )
 
             # Remove the image data from additional collections
-            remove_from_additional_collections(request, image_hash)
+            remove_from_additional_collections(request, image_hash, bucket_id=2, image_source="external_image")
 
             path_parts = file_path.split("/", 1)
             if len(path_parts) < 2:
@@ -642,7 +644,10 @@ def add_tag_to_image(request: Request, tag_id: int, image_hash: str, tag_type: i
                 http_status_code=400
             )
 
-        image = request.app.external_images_collection.find_one({'image_hash': image_hash})
+        image = request.app.external_images_collection.find_one(
+            {'image_hash': image_hash},
+            {"file_path": 1, "image_uuid": 1}  # Include image_uuid in the projection
+        )
         if not image:
             return response_handler.create_error_response_v1(
                 error_code=ErrorCode.ELEMENT_NOT_FOUND, 
@@ -651,6 +656,7 @@ def add_tag_to_image(request: Request, tag_id: int, image_hash: str, tag_type: i
             )
 
         file_path = image.get("file_path", "")
+        image_uuid = image.get("image_uuid", None)  # Get the image_uuid if available
         
         # Check if the tag is already associated with the image
         existing_image_tag = request.app.image_tags_collection.find_one({
@@ -672,6 +678,7 @@ def add_tag_to_image(request: Request, tag_id: int, image_hash: str, tag_type: i
             "tag_id": tag_id,
             "file_path": file_path,  
             "image_hash": image_hash,
+            "image_uuid": image_uuid,  # Include the image_uuid field
             "tag_type": tag_type,
             "image_source": external_image,
             "user_who_created": user_who_created,

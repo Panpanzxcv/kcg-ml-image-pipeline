@@ -234,6 +234,11 @@ def startup_db_client():
 
     app.all_image_collection = app.mongodb_db["all-images"]
 
+    all_images_hash_index=[
+    ('image_hash', pymongo.ASCENDING)
+    ]
+    create_index_if_not_exists(app.all_image_collection ,all_images_hash_index, 'all_images_hash_index')
+
     # bucket collection
 
     app.buckets_collection = app.mongodb_db["buckets"]
@@ -345,6 +350,12 @@ def startup_db_client():
     # scores
     create_collection_if_not_exists(app.mongodb_db, "image_rank_scores")
     app.image_rank_scores_collection = app.mongodb_db["image_rank_scores"]
+
+    rank_scores_hash_index=[
+    ("image_hash", pymongo.ASCENDING),
+    ]
+    create_index_if_not_exists(app.image_rank_scores_collection , rank_scores_hash_index, "rank_scores_hash_index")
+
 
     rank_scores_index=[
     ("uuid", pymongo.ASCENDING),
