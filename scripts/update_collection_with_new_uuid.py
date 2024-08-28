@@ -4,7 +4,7 @@ from pymongo import MongoClient, UpdateOne
 MONGO_URI = "mongodb://192.168.3.1:32017/"  # Replace with your MongoDB URI
 DATABASE_NAME = "orchestration-job-db"       # Replace with your database name
 COMPLETED_JOBS_COLLECTION = "all-images"
-IMAGE_RANK_SCORES_COLLECTION = "image_rank_scores"
+IMAGE_RANK_SCORES_COLLECTION = "image_classifier_scores"
 
 # Connect to MongoDB
 client = MongoClient(MONGO_URI)

@@ -459,7 +459,10 @@ def add_tag_to_image(request: Request, tag_id: int, image_hash: str, tag_type: i
                 http_status_code=400
             )
 
-        image = request.app.extracts_collection.find_one({'image_hash': image_hash})
+        image = request.app.extracts_collection.find_one(
+            {'image_hash': image_hash},
+            {"file_path": 1, "image_uuid": 1}  # Include image_uuid in the projection
+        )
         if not image:
             return response_handler.create_error_response_v1(
                 error_code=ErrorCode.ELEMENT_NOT_FOUND, 
@@ -468,6 +471,7 @@ def add_tag_to_image(request: Request, tag_id: int, image_hash: str, tag_type: i
             )
 
         file_path = image.get("file_path", "")
+        image_uuid = image.get("image_uuid", None)  # Get the image_uuid if available
         
         # Check if the tag is already associated with the image
         existing_image_tag = request.app.image_tags_collection.find_one({
@@ -489,6 +493,7 @@ def add_tag_to_image(request: Request, tag_id: int, image_hash: str, tag_type: i
             "tag_id": tag_id,
             "file_path": file_path,  
             "image_hash": image_hash,
+            "image_uuid": image_uuid,  # Include the image_uuid field
             "tag_type": tag_type,
             "image_source": extracts,
             "user_who_created": user_who_created,
