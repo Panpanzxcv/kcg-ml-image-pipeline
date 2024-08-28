@@ -5,6 +5,7 @@ MONGO_URI = "mongodb://192.168.3.1:32017/"  # Replace with your MongoDB URI
 DATABASE_NAME = "orchestration-job-db"       # Replace with your database name
 COMPLETED_JOBS_COLLECTION = "all-images"
 IMAGE_RANK_SCORES_COLLECTION = "image_classifier_scores"
+bucket_id = 0
 
 # Connect to MongoDB
 client = MongoClient(MONGO_URI)
@@ -29,7 +30,7 @@ def add_image_uuid_to_rank_scores():
                 continue  # Skip if image_uuid is already present
 
             # Find the corresponding document in completed_jobs_collection
-            job_data = completed_jobs_collection.find_one({"image_hash": image_hash}, {"uuid": 1, "image_source": 1})
+            job_data = completed_jobs_collection.find_one({"image_hash": image_hash, "bucket_id": bucket_id}, {"uuid": 1})
             if job_data and "uuid" in job_data and "image_source" in job_data:
                 image_uuid = job_data["uuid"]
                 

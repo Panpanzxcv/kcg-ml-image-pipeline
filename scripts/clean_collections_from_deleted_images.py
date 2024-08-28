@@ -14,7 +14,7 @@ def process_collection(collection, minio_client, all_existing_hashes, hash_field
         print(f"Removing {orphaned_count} orphaned documents from {collection.name}...")
 
         for doc in orphaned_docs_cursor:
-            if collection.name == "all_image_collection":
+            if collection.name == "all-images":
                 file_path = doc.get("file_path") or doc.get("task_output_file_dict", {}).get("output_file_path")
                 if file_path:
                     try:

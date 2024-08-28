@@ -22,7 +22,7 @@ async def set_image_rank_score(request: Request, ranking_score: RankingScore):
     if not image_data:
         raise HTTPException(status_code=404, detail="Image with the given uuid not found in completed jobs collection.")
 
-    image_uuid = image_data.get('uuid', None)
+    image_uuid = image_data.get('image_uuid', None)
 
     # Check if the score already exists in image_rank_scores_collection
     query = {"uuid": ranking_score.uuid, "rank_model_id": ranking_score.rank_model_id}
