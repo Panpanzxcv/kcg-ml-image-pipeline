@@ -68,7 +68,12 @@ def update_minio_object(file_name, update_data):
 
                 # Update the JSON data with the new fields
                 for key, value in update_data.items():
-                    json_data[key] = value
+                    # Navigate into nested dictionaries
+                    keys = key.split('.')
+                    target_dict = json_data
+                    for k in keys[:-1]:
+                        target_dict = target_dict.setdefault(k, {})
+                    target_dict[keys[-1]] = value
 
                 # Convert back to JSON
                 updated_json_data = json.dumps(json_data, indent=4).encode('utf-8')
