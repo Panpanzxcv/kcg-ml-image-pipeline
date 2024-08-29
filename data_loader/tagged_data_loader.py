@@ -144,8 +144,14 @@ class TaggedDatasetLoader:
                 feature, index = future.result()
                 if feature is not None:
                     data_features[index] = feature
-                else:
-                    return None, index
+        
+        for data_feature in data_features:
+            if data_feature is not None:
+                not_none_feature = data_feature
+        
+        for i in range(len(data_features)):
+            if data_features[i] is None:
+                data_features[i] = not_none_feature
 
         if pre_shuffle:
             # shuffle
@@ -202,7 +208,7 @@ class TaggedDatasetLoader:
                 positive_tagged_dataset.append(data["file_path"])
             else:
                 negative_tagged_dataset.append(data["file_path"])
-
+        positive_tagged_dataset = positive_tagged_dataset[0:min(len(positive_tagged_dataset), 700)]
         # get dataset name from a sample path
         splits = positive_tagged_dataset[0].split("/")
         dataset_name = splits[1]
