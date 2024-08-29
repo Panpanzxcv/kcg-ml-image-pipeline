@@ -27,7 +27,7 @@ def get_bucket_id(image_source):
 
 def add_image_uuid_to_rank_scores():
     bulk_operations = []
-    batch_size = 1000  # Adjust batch size as needed
+    batch_size = 10000  # Adjust batch size as needed
     cursor = image_rank_scores_collection.find(no_cursor_timeout=True).batch_size(batch_size)
     
     try:
