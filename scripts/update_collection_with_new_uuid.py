@@ -107,7 +107,7 @@ def add_image_uuid_to_ranking_datapoints():
                     continue  # Skip if no image_hash is present or bucket_id is invalid
 
                 # Find the corresponding document in completed_jobs_collection
-                job_data = completed_jobs_collection.find_one({"task_output_file_dict.output_file_hash": image_hash, "bucket_id": bucket_id}, {"uuid": 1})
+                job_data = completed_jobs_collection.find_one({"image_hash": image_hash, "bucket_id": bucket_id}, {"uuid": 1})
                 if job_data and "uuid" in job_data:
                     image_uuid = job_data["uuid"]
                     update_data[f"{image_metadata_field}.image_uuid"] = image_uuid
