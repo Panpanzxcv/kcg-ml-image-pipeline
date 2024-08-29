@@ -3,25 +3,23 @@ from pymongo import MongoClient, UpdateOne
 # MongoDB connection details
 MONGO_URI = "mongodb://192.168.3.1:32017/"  # Replace with your MongoDB URI
 DATABASE_NAME = "orchestration-job-db"       # Replace with your database name
-COMPLETED_JOBS_COLLECTION = "all-images"
 IMAGE_TAGS_COLLECTION = "image_tags"
 
 # Connect to MongoDB
 client = MongoClient(MONGO_URI)
 db = client[DATABASE_NAME]
-completed_jobs_collection = db[COMPLETED_JOBS_COLLECTION]
 image_tags_collection = db[IMAGE_TAGS_COLLECTION]
 
-def get_bucket_id(image_source):
+def get_collection(image_source):
     """
-    Convert image_source to the corresponding bucket_id.
+    Return the appropriate collection based on the image_source.
     """
     if image_source == 'generated_image':
-        return 0
+        return db["completed-jobs"]
     elif image_source == 'extract_image':
-        return 1
+        return db["extracts"]
     elif image_source == 'external_image':
-        return 2
+        return db["external_images"]
     else:
         return None
 
@@ -34,18 +32,23 @@ def add_image_uuid_to_image_tags():
         for image_tag in cursor:
             image_hash = image_tag.get("image_hash")
             image_source = image_tag.get("image_source")
-            bucket_id = get_bucket_id(image_source)
 
-            if not image_hash or bucket_id is None:
-                print("Skipping document without image_hash or with an invalid image_source.")
-                continue  # Skip if no image_hash is present or bucket_id is invalid
+            if not image_hash or not image_source:
+                print("Skipping document without image_hash or image_source.")
+                continue  # Skip if no image_hash or image_source is present
 
             if "image_uuid" in image_tag:
                 print(f"Skipping document with _id: {image_tag['_id']} as it already has image_uuid.")
                 continue  # Skip if image_uuid is already present
 
-            # Find the corresponding document in completed_jobs_collection using bucket_id
-            job_data = completed_jobs_collection.find_one({"image_hash": image_hash, "bucket_id": bucket_id}, {"uuid": 1})
+            # Get the correct collection based on image_source
+            collection = get_collection(image_source)
+            if collection is None:
+                print(f"Skipping document with invalid image_source: {image_source}")
+                continue
+
+            # Find the corresponding document in the appropriate collection
+            job_data = collection.find_one({"image_hash": image_hash}, {"uuid": 1})
             if job_data and "uuid" in job_data:
                 image_uuid = job_data["uuid"]
                 
@@ -55,7 +58,7 @@ def add_image_uuid_to_image_tags():
                 bulk_operations.append(UpdateOne(update_query, update_data))
 
             else:
-                print(f"No matching job found for image_hash: {image_hash} and bucket_id: {bucket_id}")
+                print(f"No matching job found for image_hash: {image_hash} in collection: {collection.name}")
 
             if len(bulk_operations) >= batch_size:
                 # Execute bulk update
