@@ -94,9 +94,7 @@ def update_minio_object(file_name, update_data):
         print(f"Error updating MinIO object {file_name}: {e}")
 
 def add_image_uuid_to_ranking_datapoints():
-    bulk_operations = []
-    batch_size = 1000  # Adjust batch size as needed
-    cursor = ranking_datapoints_collection.find(no_cursor_timeout=True).batch_size(batch_size)
+    cursor = ranking_datapoints_collection.find(no_cursor_timeout=True)
 
     try:
         for datapoint in cursor:
@@ -122,21 +120,10 @@ def add_image_uuid_to_ranking_datapoints():
             if update_data:
                 # Prepare the update operation for MongoDB
                 update_query = {"_id": datapoint["_id"]}
-                bulk_operations.append(UpdateOne(update_query, {"$set": update_data}))
+                ranking_datapoints_collection.update_one(update_query, {"$set": update_data})
 
                 # Update the corresponding object in MinIO
                 update_minio_object(datapoint["file_name"], update_data)
-
-            if len(bulk_operations) >= batch_size:
-                # Execute bulk update for MongoDB
-                print(f"Executing bulk update for {len(bulk_operations)} documents.")
-                ranking_datapoints_collection.bulk_write(bulk_operations)
-                bulk_operations = []
-
-        if bulk_operations:
-            # Execute remaining bulk update for MongoDB
-            print(f"Executing final bulk update for {len(bulk_operations)} documents.")
-            ranking_datapoints_collection.bulk_write(bulk_operations)
 
         print("Successfully updated all documents in ranking_datapoints_collection with image_uuid.")
 
