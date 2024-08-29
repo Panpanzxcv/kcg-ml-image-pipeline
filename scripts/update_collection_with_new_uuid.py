@@ -51,10 +51,10 @@ def add_image_uuid_to_image_tags():
             if image_source == 'generated_image':
                 job_data = collection.find_one({"task_output_file_dict.output_file_hash": image_hash}, {"uuid": 1})
             else:
-                job_data = collection.find_one({"image_hash": image_hash}, {"uuid": 1})
+                job_data = collection.find_one({"image_hash": image_hash}, {"image_uuid": 1})
 
-            if job_data and "uuid" in job_data:
-                image_uuid = job_data["uuid"]
+            if job_data and "image_uuid" in job_data:
+                image_uuid = job_data["image_uuid"]
                 
                 # Prepare the update operation
                 update_query = {"_id": image_tag["_id"]}
