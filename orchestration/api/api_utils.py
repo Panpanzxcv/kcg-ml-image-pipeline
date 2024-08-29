@@ -914,3 +914,16 @@ def uuid64_number_to_string(uuid_number):
     return hex_string[0:4] + '-' + hex_string[4:8] + '-' + hex_string[8:12] + '-' + hex_string[12:16]
 
 
+
+def get_bucket_id(image_source):
+    """
+    Translate image_source to the corresponding bucket_id.
+    """
+    if image_source == 'generated_image':
+        return 0
+    elif image_source == 'extract_image':
+        return 1
+    elif image_source == 'external_image':
+        return 2
+    else:
+        return None
