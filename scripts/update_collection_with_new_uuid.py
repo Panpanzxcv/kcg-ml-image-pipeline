@@ -28,6 +28,17 @@ ranking_datapoints_collection = db[RANKING_DATAPOINTS_COLLECTION]
 print("Connecting to MinIO...")
 minio_client = Minio(MINIO_ENDPOINT, access_key=MINIO_ACCESS_KEY, secret_key=MINIO_SECRET_KEY, secure=False)
 
+# Cache MinIO objects
+print("Caching MinIO objects...")
+minio_objects = {}
+path_prefix = f"{RANKS_PATH}/"
+objects = minio_client.list_objects(BUCKET_NAME, prefix=path_prefix, recursive=True)
+
+for obj in objects:
+    file_name = obj.object_name.split('/')[-1]  # Extract just the file name
+    minio_objects[file_name] = obj.object_name
+print(f"Cached {len(minio_objects)} objects from MinIO.")
+
 def get_bucket_id(image_source):
     """
     Translate image_source to the corresponding bucket_id.
@@ -47,51 +58,49 @@ def update_minio_object(file_name, update_data):
     """
     print(f"Starting update for MinIO object: {file_name}")
     try:
-        # Construct the full path
-        path_prefix = f"{RANKS_PATH}/"
-        objects = minio_client.list_objects(BUCKET_NAME, prefix=path_prefix, recursive=True)
+        # Look up the object name using the cached minio_objects dictionary
+        obj_name = minio_objects.get(file_name)
+        if not obj_name:
+            print(f"No matching MinIO object found for file_name: {file_name}")
+            return
 
-        for obj in objects:
-            # Only process the object if it matches the file_name
-            if obj.object_name.endswith(file_name):
-                print(f"Processing MinIO object: {obj.object_name}")
+        print(f"Processing MinIO object: {obj_name}")
 
-                # Get the object
-                response = minio_client.get_object(BUCKET_NAME, obj.object_name)
-                data = response.read()
-                response.close()
-                response.release_conn()
+        # Get the object
+        response = minio_client.get_object(BUCKET_NAME, obj_name)
+        data = response.read()
+        response.close()
+        response.release_conn()
 
-                # Convert JSON data to a Python dictionary
-                try:
-                    json_data = json.loads(data)
-                except json.JSONDecodeError:
-                    print(f"Skipping non-JSON object: {obj.object_name}")
-                    continue
+        # Convert JSON data to a Python dictionary
+        try:
+            json_data = json.loads(data)
+        except json.JSONDecodeError:
+            print(f"Skipping non-JSON object: {obj_name}")
+            return
 
-                # Update the JSON data with the new fields
-                for key, value in update_data.items():
-                    # Navigate into nested dictionaries
-                    keys = key.split('.')
-                    target_dict = json_data
-                    for k in keys[:-1]:
-                        target_dict = target_dict.setdefault(k, {})
-                    target_dict[keys[-1]] = value
+        # Update the JSON data with the new fields
+        for key, value in update_data.items():
+            # Navigate into nested dictionaries
+            keys = key.split('.')
+            target_dict = json_data
+            for k in keys[:-1]:
+                target_dict = target_dict.setdefault(k, {})
+            target_dict[keys[-1]] = value
 
-                # Convert back to JSON
-                updated_json_data = json.dumps(json_data, indent=4).encode('utf-8')
-                updated_data_stream = BytesIO(updated_json_data)
+        # Convert back to JSON
+        updated_json_data = json.dumps(json_data, indent=4).encode('utf-8')
+        updated_data_stream = BytesIO(updated_json_data)
 
-                # Upload the updated object back to MinIO
-                minio_client.put_object(
-                    BUCKET_NAME,
-                    obj.object_name,
-                    updated_data_stream,
-                    length=len(updated_json_data),
-                    content_type='application/json'
-                )
-                print(f"Updated MinIO object: {obj.object_name}")
-                break  # Stop after processing the matching object
+        # Upload the updated object back to MinIO
+        minio_client.put_object(
+            BUCKET_NAME,
+            obj_name,
+            updated_data_stream,
+            length=len(updated_json_data),
+            content_type='application/json'
+        )
+        print(f"Updated MinIO object: {obj_name}")
 
     except Exception as e:
         print(f"Error updating MinIO object {file_name}: {e}")
