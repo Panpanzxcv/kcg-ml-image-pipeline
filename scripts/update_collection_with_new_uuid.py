@@ -18,12 +18,14 @@ BUCKET_NAME = "datasets"
 RANKS_PATH = "ranks"  # Specify the path after the bucket name
 
 # Connect to MongoDB
+print("Connecting to MongoDB...")
 client = MongoClient(MONGO_URI)
 db = client[DATABASE_NAME]
 completed_jobs_collection = db[COMPLETED_JOBS_COLLECTION]
 ranking_datapoints_collection = db[RANKING_DATAPOINTS_COLLECTION]
 
 # Initialize MinIO client
+print("Connecting to MinIO...")
 minio_client = Minio(MINIO_ENDPOINT, access_key=MINIO_ACCESS_KEY, secret_key=MINIO_SECRET_KEY, secure=False)
 
 def get_bucket_id(image_source):
@@ -43,6 +45,7 @@ def update_minio_object(file_name, update_data):
     """
     Fetch and update the JSON object on MinIO using the provided file_name under the specified path.
     """
+    print(f"Starting update for MinIO object: {file_name}")
     try:
         # Construct the full path
         path_prefix = f"{RANKS_PATH}/"
@@ -94,10 +97,12 @@ def update_minio_object(file_name, update_data):
         print(f"Error updating MinIO object {file_name}: {e}")
 
 def add_image_uuid_to_ranking_datapoints():
+    print("Starting the process to add image_uuid to ranking datapoints...")
     cursor = ranking_datapoints_collection.find(no_cursor_timeout=True)
 
     try:
         for datapoint in cursor:
+            print(f"Processing document with _id: {datapoint['_id']}")
             update_data = {}
             for image_metadata_field in ["image_1_metadata", "image_2_metadata"]:
                 image_metadata = datapoint.get(image_metadata_field, {})
@@ -105,24 +110,30 @@ def add_image_uuid_to_ranking_datapoints():
                 image_source = image_metadata.get("image_source")
                 bucket_id = get_bucket_id(image_source)
 
+                print(f"Checking {image_metadata_field}: image_hash={image_hash}, image_source={image_source}, bucket_id={bucket_id}")
+
                 if not image_hash or bucket_id is None:
                     print(f"Skipping {image_metadata_field} in document with _id: {datapoint['_id']} due to missing image_hash or invalid image_source.")
                     continue  # Skip if no image_hash is present or bucket_id is invalid
 
                 # Find the corresponding document in completed_jobs_collection
+                print(f"Looking for matching job in all images with image_hash: {image_hash} and bucket_id: {bucket_id}")
                 job_data = completed_jobs_collection.find_one({"image_hash": image_hash, "bucket_id": bucket_id}, {"uuid": 1})
                 if job_data and "uuid" in job_data:
                     image_uuid = job_data["uuid"]
                     update_data[f"{image_metadata_field}.image_uuid"] = image_uuid
+                    print(f"Found matching job. Adding image_uuid: {image_uuid} to {image_metadata_field}")
                 else:
                     print(f"No matching job found for {image_metadata_field} with image_hash: {image_hash} and bucket_id: {bucket_id}")
 
             if update_data:
                 # Prepare the update operation for MongoDB
                 update_query = {"_id": datapoint["_id"]}
+                print(f"Updating MongoDB document with _id: {datapoint['_id']} with data: {update_data}")
                 ranking_datapoints_collection.update_one(update_query, {"$set": update_data})
 
                 # Update the corresponding object in MinIO
+                print(f"Updating corresponding MinIO object for file_name: {datapoint['file_name']}")
                 update_minio_object(datapoint["file_name"], update_data)
 
         print("Successfully updated all documents in ranking_datapoints_collection with image_uuid.")
@@ -131,6 +142,7 @@ def add_image_uuid_to_ranking_datapoints():
         print(f"Error during update: {e}")
 
     finally:
+        print("Closing cursor and MongoDB connection.")
         cursor.close()
 
 if __name__ == "__main__":
