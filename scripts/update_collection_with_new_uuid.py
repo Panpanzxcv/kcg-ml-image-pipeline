@@ -12,6 +12,19 @@ db = client[DATABASE_NAME]
 completed_jobs_collection = db[COMPLETED_JOBS_COLLECTION]
 image_tags_collection = db[IMAGE_TAGS_COLLECTION]
 
+def get_bucket_id(image_source):
+    """
+    Convert image_source to the corresponding bucket_id.
+    """
+    if image_source == 'generated_image':
+        return 0
+    elif image_source == 'extract_image':
+        return 1
+    elif image_source == 'external_image':
+        return 2
+    else:
+        return None
+
 def add_image_uuid_to_image_tags():
     bulk_operations = []
     batch_size = 10000  # Adjust batch size as needed
@@ -21,17 +34,18 @@ def add_image_uuid_to_image_tags():
         for image_tag in cursor:
             image_hash = image_tag.get("image_hash")
             image_source = image_tag.get("image_source")
+            bucket_id = get_bucket_id(image_source)
 
-            if not image_hash or not image_source:
-                print("Skipping document without image_hash or image_source.")
-                continue  # Skip if no image_hash or image_source is present
+            if not image_hash or bucket_id is None:
+                print("Skipping document without image_hash or with an invalid image_source.")
+                continue  # Skip if no image_hash is present or bucket_id is invalid
 
             if "image_uuid" in image_tag:
                 print(f"Skipping document with _id: {image_tag['_id']} as it already has image_uuid.")
                 continue  # Skip if image_uuid is already present
 
-            # Find the corresponding document in completed_jobs_collection
-            job_data = completed_jobs_collection.find_one({"image_hash": image_hash, "image_source": image_source}, {"uuid": 1})
+            # Find the corresponding document in completed_jobs_collection using bucket_id
+            job_data = completed_jobs_collection.find_one({"image_hash": image_hash, "bucket_id": bucket_id}, {"uuid": 1})
             if job_data and "uuid" in job_data:
                 image_uuid = job_data["uuid"]
                 
@@ -41,7 +55,7 @@ def add_image_uuid_to_image_tags():
                 bulk_operations.append(UpdateOne(update_query, update_data))
 
             else:
-                print(f"No matching job found for image_hash: {image_hash} and image_source: {image_source}")
+                print(f"No matching job found for image_hash: {image_hash} and bucket_id: {bucket_id}")
 
             if len(bulk_operations) >= batch_size:
                 # Execute bulk update
