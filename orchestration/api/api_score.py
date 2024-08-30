@@ -465,8 +465,7 @@ def delete_image_rank_score_by_hash(
 async def get_images_grouped_by_rank_score_with_binning(
     request: Request, 
     bins: List[int] = Body(description="The bins to use for grouping, e.x., [0, 5, 10]"),
-    rank_model_id: int = Body(), 
-    score_field: str = Body(),
+    rank_model_id: int = Body(),
     bucket_ids: Optional[List[int]] = Body(default=None),
     dataset_ids: Optional[List[int]] = Body(default=None),
     random_size: Optional[int] = Body(default=None),
@@ -496,7 +495,7 @@ async def get_images_grouped_by_rank_score_with_binning(
         }
         # rank_score_query['score_field'] = score_field
         rank_score_query["rank_model_id"] = rank_model_id
-        rank_scores = request.app.image_rank_scores_collection.find(rank_score_query)
+        rank_scores = request.app.image_rank_scores_collection.find(rank_score_query, {"_id": 0})
         if rank_scores:
             rank_scores = list(rank_scores)
         else:
@@ -517,10 +516,10 @@ async def get_images_grouped_by_rank_score_with_binning(
             if query_conditions:
                 query_for_all_images = {"$or": query_conditions}
         
-        # Collect all UUIDs from rank_scores
-        image_uuids = list(Uuid64.from_mongo_value(rank_score["image_uuid"]).to_formatted_str() for rank_score in rank_scores)
-        # Prepare the query for all UUIDs
-        query_for_all_images["uuid"] = {"$in": image_uuids}
+        # Collect all image_hashes from rank_scores
+        image_hashes = list(set(rank_score["image_hash"] for rank_score in rank_scores))
+        # Prepare the query for all image hashes
+        query_for_all_images["image_hash"] = {"$in": image_hashes}
         # Fetch all image data in one query
         image_data_list = request.app.all_image_collection.find(query_for_all_images)
         if image_data_list:
@@ -528,34 +527,28 @@ async def get_images_grouped_by_rank_score_with_binning(
         else:
             image_data_list = []
         # Convert the cursor to a dictionary for easier access
-        image_data_set = (image_data["uuid"] for image_data in image_data_list)
+        image_data_set = set([image_data["image_hash"] for image_data in image_data_list])
         # Create the images list using the fetched data
         images = []
         for rank_score in rank_scores:
-            uuid = rank_score["uuid"]
-            if uuid in image_data_set:
-                images.append({
-                    "uuid": uuid,
-                    "rank_model_id": rank_model_id,
-                    "rank_id": rank_score["rank_id"],
-                    "score": rank_score["score"],
-                    "sigma_score": rank_score["sigma_score"],
-                })
+            image_hash = rank_score["image_hash"]
+            if image_hash in image_data_set:
+                images.append(rank_score)
         # group images by rank score
-        binned_images = [[] for i in range(len(bins) - 1)]
+        image_bins = [[] for i in range(len(bins) - 1)]
         for image in images:
-            for i in range(len(bins - 1)):
+            for i in range(len(bins) - 1):
                 if image["score"] >= bins[i] and image["score"] < bins[i + 1]:
-                    binned_images[i].append(image)
+                    image_bins[i].append(image)
                     break
         # trim each bin to max_count
-        for binned_image in binned_images:
-            if len(binned_image) > max_count:
-                binned_image = binned_image[:max_count]
+        for i in range(len(image_bins)):
+            if len(image_bins[i]) > max_count:
+                image_bins[i] = image_bins[i][:max_count]
         
         # Return a standardized success response with the score data
         return api_response_handler.create_success_response_v1(
-            response_data={},
+            response_data={"bins": image_bins},
             http_status_code=200
         )
         

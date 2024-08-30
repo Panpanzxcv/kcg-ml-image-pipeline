@@ -897,4 +897,4 @@ class Bin(BaseModel):
         }
 
 class ResponseBinnedRankingScore(BaseModel):
-    scores: List[RankingScore]
+    bins: List[RankingScore]
