@@ -1,159 +1,102 @@
 from pymongo import MongoClient, UpdateOne
-from minio import Minio
-from io import BytesIO
-import json
-from collections import OrderedDict
 
 # MongoDB connection details
 MONGO_URI = "mongodb://192.168.3.1:32017/"  # Replace with your MongoDB URI
 DATABASE_NAME = "orchestration-job-db"       # Replace with your database name
-COMPLETED_JOBS_COLLECTION = "all-images"
-RANKING_DATAPOINTS_COLLECTION = "ranking_datapoints"
-
-# MinIO connection details
-MINIO_ENDPOINT = "192.168.3.5:9000"
-MINIO_ACCESS_KEY = "v048BpXpWrsVIHUfdAix"
-MINIO_SECRET_KEY = "4TFS20qkxVuX2HaC8ezAgG7GaDlVI1TqSPs0BKyu"
-BUCKET_NAME = "datasets"
-RANKS_PATH = "ranks"  # Specify the path after the bucket name
+ALL_IMAGES_COLLECTION = "all-images"
+IMAGE_TAGS_COLLECTION = "image_tags"
+COMPLETED_JOBS_COLLECTION = "completed-jobs"
+EXTRACTS_COLLECTION = "extracts"
+EXTERNAL_IMAGES_COLLECTION = "external_images"
 
 # Connect to MongoDB
-print("Connecting to MongoDB...")
 client = MongoClient(MONGO_URI)
 db = client[DATABASE_NAME]
+all_images_collection = db[ALL_IMAGES_COLLECTION]
+image_tags_collection = db[IMAGE_TAGS_COLLECTION]
 completed_jobs_collection = db[COMPLETED_JOBS_COLLECTION]
-ranking_datapoints_collection = db[RANKING_DATAPOINTS_COLLECTION]
+extracts_collection = db[EXTRACTS_COLLECTION]
+external_images_collection = db[EXTERNAL_IMAGES_COLLECTION]
 
-# Initialize MinIO client
-print("Connecting to MinIO...")
-minio_client = Minio(MINIO_ENDPOINT, access_key=MINIO_ACCESS_KEY, secret_key=MINIO_SECRET_KEY, secure=False)
-
-# Cache MinIO objects
-print("Caching MinIO objects...")
-minio_objects = {}
-path_prefix = f"{RANKS_PATH}/"
-objects = minio_client.list_objects(BUCKET_NAME, prefix=path_prefix, recursive=True)
-
-for obj in objects:
-    file_name = obj.object_name.split('/')[-1]  # Extract just the file name
-    minio_objects[file_name] = obj.object_name
-print(f"Cached {len(minio_objects)} objects from MinIO.")
-
-def get_bucket_id(image_source):
+def get_bucket_id_and_image_uuid(image_hash):
     """
-    Translate image_source to the corresponding bucket_id.
+    Determine the bucket_id by searching for the image_hash in the different collections.
+    Returns the bucket_id and the image_uuid if found, otherwise returns None, None.
     """
-    if image_source == 'generated_image':
-        return 0
-    elif image_source == 'extract_image':
-        return 1
-    elif image_source == 'external_image':
-        return 2
-    else:
-        return None
+    # Check in completed_jobs_collection for bucket_id = 0
+    job_data = completed_jobs_collection.find_one({"task_output_file_dict.output_file_hash": image_hash}, {"_id": 1})
+    if job_data:
+        return 0, None
 
-def update_minio_object(file_name, update_data):
+    # Check in extracts_collection for bucket_id = 1
+    job_data = extracts_collection.find_one({"image_hash": image_hash}, {"_id": 1})
+    if job_data:
+        return 1, None
+
+    # Check in external_images_collection for bucket_id = 2
+    job_data = external_images_collection.find_one({"image_hash": image_hash}, {"_id": 1})
+    if job_data:
+        return 2, None
+
+    # If not found in any collection
+    return None, None
+
+def find_image_uuid_in_all_images(image_hash, bucket_id):
     """
-    Fetch and update the JSON object on MinIO using the provided file_name under the specified path.
+    Find the image_uuid in the all-images collection based on the image_hash and bucket_id.
     """
-    print(f"Starting update for MinIO object: {file_name}")
-    try:
-        # Look up the object name using the cached minio_objects dictionary
-        obj_name = minio_objects.get(file_name)
-        if not obj_name:
-            print(f"No matching MinIO object found for file_name: {file_name}")
-            return
+    return all_images_collection.find_one({"image_hash": image_hash, "bucket_id": bucket_id}, {"uuid": 1})
 
-        print(f"Processing MinIO object: {obj_name}")
-
-        # Get the object
-        response = minio_client.get_object(BUCKET_NAME, obj_name)
-        data = response.read()
-        response.close()
-        response.release_conn()
-
-        # Convert JSON data to a Python dictionary
-        try:
-            json_data = json.loads(data)
-        except json.JSONDecodeError:
-            print(f"Skipping non-JSON object: {obj_name}")
-            return
-
-        # Update the JSON data with the new fields
-        for key, value in update_data.items():
-            # Navigate into nested dictionaries
-            keys = key.split('.')
-            target_dict = json_data
-            for k in keys[:-1]:
-                target_dict = target_dict.setdefault(k, {})
-            target_dict[keys[-1]] = value
-
-        # Convert back to JSON
-        updated_json_data = json.dumps(json_data, indent=4).encode('utf-8')
-        updated_data_stream = BytesIO(updated_json_data)
-
-        # Upload the updated object back to MinIO
-        minio_client.put_object(
-            BUCKET_NAME,
-            obj_name,
-            updated_data_stream,
-            length=len(updated_json_data),
-            content_type='application/json'
-        )
-        print(f"Updated MinIO object: {obj_name}")
-
-    except Exception as e:
-        print(f"Error updating MinIO object {file_name}: {e}")
-
-def add_image_uuid_to_ranking_datapoints():
-    print("Starting the process to add image_uuid to ranking datapoints...")
-    cursor = ranking_datapoints_collection.find(no_cursor_timeout=True)
+def add_image_uuid_to_image_tags():
+    bulk_operations = []
+    cursor = image_tags_collection.find(no_cursor_timeout=True)
 
     try:
-        for datapoint in cursor:
-            print(f"Processing document with _id: {datapoint['_id']}")
-            update_data = {}
-            for image_metadata_field in ["image_1_metadata", "image_2_metadata"]:
-                image_metadata = datapoint.get(image_metadata_field, {})
-                image_hash = image_metadata.get("file_hash")
-                image_source = image_metadata.get("image_source")
-                bucket_id = get_bucket_id(image_source)
+        for image_tag in cursor:
+            image_hash = image_tag.get("image_hash")
 
-                print(f"Checking {image_metadata_field}: image_hash={image_hash}, image_source={image_source}, bucket_id={bucket_id}")
+            if not image_hash:
+                print(f"Skipping document without image_hash.")
+                continue  # Skip if no image_hash is present
 
-                if not image_hash or bucket_id is None:
-                    print(f"Skipping {image_metadata_field} in document with _id: {datapoint['_id']} due to missing image_hash or invalid image_source.")
-                    continue  # Skip if no image_hash is present or bucket_id is invalid
+            # Determine the correct bucket_id by searching in the respective collections
+            bucket_id, _ = get_bucket_id_and_image_uuid(image_hash)
 
-                # Find the corresponding document in completed_jobs_collection
-                print(f"Looking for matching job in all images with image_hash: {image_hash} and bucket_id: {bucket_id}")
-                job_data = completed_jobs_collection.find_one({"image_hash": image_hash, "bucket_id": bucket_id}, {"uuid": 1})
-                if job_data and "uuid" in job_data:
-                    image_uuid = job_data["uuid"]
-                    update_data[f"{image_metadata_field}.image_uuid"] = image_uuid
-                    print(f"Found matching job. Adding image_uuid: {image_uuid} to {image_metadata_field}")
-                else:
-                    print(f"No matching job found for {image_metadata_field} with image_hash: {image_hash} and bucket_id: {bucket_id}")
+            if bucket_id is None:
+                print(f"No matching job found for image_hash: {image_hash}")
+                continue
 
-            if update_data:
-                # Prepare the update operation for MongoDB
-                update_query = {"_id": datapoint["_id"]}
-                print(f"Updating MongoDB document with _id: {datapoint['_id']} with data: {update_data}")
-                ranking_datapoints_collection.update_one(update_query, {"$set": update_data})
+            # Find the corresponding image_uuid in the all-images collection
+            image_uuid_data = find_image_uuid_in_all_images(image_hash, bucket_id)
+            if image_uuid_data and "uuid" in image_uuid_data:
+                image_uuid = image_uuid_data["uuid"]
 
-                # Update the corresponding object in MinIO
-                print(f"Updating corresponding MinIO object for file_name: {datapoint['file_name']}")
-                update_minio_object(datapoint["file_name"], update_data)
+                # Prepare the update operation
+                update_query = {"_id": image_tag["_id"]}
+                update_data = {"$set": {"image_uuid": image_uuid}}
+                bulk_operations.append(UpdateOne(update_query, update_data))
+            else:
+                print(f"No matching image_uuid found in all-images collection for image_hash: {image_hash} and bucket_id: {bucket_id}")
 
-        print("Successfully updated all documents in ranking_datapoints_collection with image_uuid.")
+            if len(bulk_operations) >= 1000:  # Adjust batch size as needed
+                # Execute bulk update
+                print(f"Executing bulk update for {len(bulk_operations)} documents.")
+                image_tags_collection.bulk_write(bulk_operations)
+                bulk_operations = []
+
+        if bulk_operations:
+            # Execute remaining bulk update
+            print(f"Executing final bulk update for {len(bulk_operations)} documents.")
+            image_tags_collection.bulk_write(bulk_operations)
+
+        print("Successfully updated all documents in image_tags_collection with image_uuid.")
 
     except Exception as e:
         print(f"Error during update: {e}")
 
     finally:
-        print("Closing cursor and MongoDB connection.")
         cursor.close()
 
 if __name__ == "__main__":
-    add_image_uuid_to_ranking_datapoints()
+    add_image_uuid_to_image_tags()
     client.close()
