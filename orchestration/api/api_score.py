@@ -7,7 +7,8 @@ from typing import List, Optional, Tuple
 from typing_extensions import Annotated
 
 from pymongo import UpdateOne
-from orchestration.api.mongo_schemas import Bin, RankingScore, ListBin, ListRankingScore, ListOnlyRankingScore, ResponseRankingScore
+from orchestration.api.mongo_schemas import Bin, RankingScore, ListBin, ListRankingScore, ListOnlyRankingScore, ResponseBinnedRankingScore, ResponseRankingScore
+from orchestration.api.utils import select_random_values
 from .api_utils import ApiResponseHandler, ErrorCode, StandardSuccessResponse, WasPresentResponse, ApiResponseHandlerV1, StandardSuccessResponseV1
 
 router = APIRouter()
@@ -458,15 +459,16 @@ def delete_image_rank_score_by_hash(
                description="Get images grouped by rank score with binning",
                status_code=200,
                tags=["image scores"], 
-               response_model=StandardSuccessResponseV1[ListBin],
+               response_model=StandardSuccessResponseV1[ResponseBinnedRankingScore],
                responses=ApiResponseHandlerV1.listErrors([422]))
 async def get_images_grouped_by_rank_score_with_binning(
     request: Request, 
-    bins: List[Bin] = Body(),
+    bins: List[int] = Body(description="The bins to use for grouping, e.x., [0, 5, 10]"),
     rank_model_id: int = Body(), 
     score_field: str = Body(),
     bucket_ids: Optional[List[int]] = Body(default=None),
     dataset_ids: Optional[List[int]] = Body(default=None),
+    random_size: Optional[int] = Body(default=None),
     max_count: int = Body(default=20),
 ):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
@@ -482,7 +484,26 @@ async def get_images_grouped_by_rank_score_with_binning(
                 error_string="The provided rank_model_id does not exist in rank_collection.",
                 http_status_code=400
             )
+        # sort bins in ascending order
+        bins.sort()
         
+        # build rank score query to get images with rank scores in the given bins
+        rank_score_query = {}
+        rank_score_query['score'] = {
+            '$gte': min(bins),
+            '$lte': max(bins)
+        }
+        # rank_score_query['score_field'] = score_field
+        rank_score_query["rank_model_id"] = rank_model_id
+        rank_scores = request.app.image_rank_scores_collection.find(rank_score_query)
+        
+        # If random_size is provided, select random values from the rank_scores
+        if random_size:
+            rank_scores = select_random_values(array=rank_scores, random_size=random_size)
+            
+        # filter images based on bucket_ids and dataset_ids
+        images = []
+        query_for_all_images = {} # query for all images collection to filter out images that are not in the bucket_ids or dataset_ids
         if bucket_ids or dataset_ids:
             query_conditions = []
             if bucket_ids:
@@ -491,50 +512,34 @@ async def get_images_grouped_by_rank_score_with_binning(
                 query_conditions.append({"dataset_id": {"$in": dataset_ids}})
             if query_conditions:
                 query_for_all_images = {"$or": query_conditions}
+        for rank_score in rank_scores:
+            query_for_all_images["uuid"] = rank_score["uuid"]
+            image_data = request.app.all_image_collection.find_one(query_for_all_images)
+            if image_data:
+                image_data = dict(image_data)
+                images.append({
+                    "uuid": rank_score["uuid"],
+                    "rank_model_id": rank_model_id,
+                    "rank_id": rank_score["rank_id"],
+                    "score": rank_score["score"],
+                    "sigma_score": rank_score["sigma_score"],
+                })
         
-        bins_data = []
-        for bin in bins:
-            rank_score_query = {}
-            min_score = bin.min_score
-            max_score = bin.max_score
-            
-            rank_score_query['score'] = {
-                '$gte': min_score,
-                '$lte': max_score
-            }
-            # rank_score_query['score_field'] = score_field
-            rank_score_query["rank_model_id"] = rank_model_id
-            
-            rank_scores = request.app.image_rank_scores_collection.find(rank_score_query)
-            
-            images = []
-            count = 0
-            for rank_score in rank_scores:
-                if count < max_count:
-                    query_for_all_images["image_hash"] = rank_score["image_hash"]
-                    image_data = request.app.all_image_collection.find_one(query_for_all_images)
-                    if image_data:
-                        image_data = dict(image_data)
-                        images.append({
-                            "uuid": rank_score["image_hash"],
-                            "rank_model_id": rank_model_id,
-                            "rank_id": rank_score["rank_id"],
-                            "score": rank_score["score"],
-                            "sigma_score": rank_score["sigma_score"],
-                            "bucket_id": image_data["bucket_id"],
-                            "dataset_id": image_data["dataset_id"],
-                            "image_path": image_data["image_path"],
-                        })
-                        count += 1
-            bins_data.append({
-                "min_score": min_score,
-                "max_score": max_score,
-                "images": images
-            })
+        # group images by rank score
+        binned_images = [[] for i in range(len(bins - 1))]
+        for image in images:
+            for i in range(len(bins - 1)):
+                if image["score"] >= bins[i] and image["score"] < bins[i + 1]:
+                    binned_images[i].append(image)
+                    break
+        # trim each bin to max_count
+        for binned_image in binned_images:
+            if len(binned_image) > max_count:
+                binned_image = binned_image[:max_count]
         
-    # Return a standardized success response with the score data
+        # Return a standardized success response with the score data
         return api_response_handler.create_success_response_v1(
-            response_data={"bins": bins_data},
+            response_data={},
             http_status_code=200
         )
         

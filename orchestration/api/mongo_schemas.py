@@ -885,47 +885,16 @@ class ListVideoGame(BaseModel):
     
 class ListVideoMetaData(BaseModel):
     data: List[VideoMetaData]
-
-class BinRankingScore(BaseModel):
-    uuid: str
-    rank_model_id: int
-    rank_id: int
-    score: float
-    sigma_score: float
-    bucket_id: int
-    dataset_id: int
-    image_hash: str
-    image_path: str
-    
-    def to_dict(self):
-        return {
-            "uuid": self.uuid,
-            "rank_model_id": self.rank_model_id,
-            "rank_id": self.rank_id,
-            "score": self.score,
-            "sigma_score": self.sigma_score,
-            "bucket_id": self.bucket_id,
-            "dataset_id": self.dataset_id,
-            "image_hash": self.image_hash,
-            "image_path": self.image_path
-        }
         
 class Bin(BaseModel):
     min_score: float
     max_score: float
-    items: List[BinRankingScore] = Query(default=[], description="List of ranking scores in the bin")
     
     def to_dict(self):
         return {
             "min_score": self.min_score,
             "max_score": self.max_score,
-            "items": [item.to_dict() for item in self.items]
         }
-    
-class ListBin(BaseModel):
-    bins: List[Bin]
-    
-    def to_dict(self):
-        return {
-            "bins": [bin.to_dict() for bin in self.bins]
-        }
+
+class ResponseBinnedRankingScore(BaseModel):
+    scores: List[RankingScore]
