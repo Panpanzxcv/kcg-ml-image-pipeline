@@ -6,7 +6,7 @@ def process_collection(collection, minio_client, all_existing_hashes, hash_field
     """
     Process each collection in batches to avoid DocumentTooLarge errors.
     """
-    batch_size = 2000
+    batch_size = 100
     orphaned_docs_cursor = collection.find({hash_field: {"$nin": list(all_existing_hashes)}}).batch_size(batch_size)
     orphaned_count = collection.count_documents({hash_field: {"$nin": list(all_existing_hashes)}})
 
