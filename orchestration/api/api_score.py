@@ -7,8 +7,9 @@ from typing import List, Optional, Tuple
 from typing_extensions import Annotated
 
 from pymongo import UpdateOne
-from orchestration.api.mongo_schemas import Bin, RankingScore, ListBin, ListRankingScore, ListOnlyRankingScore, ResponseBinnedRankingScore, ResponseRankingScore
+from orchestration.api.mongo_schemas import RankingScore, ListRankingScore, ListOnlyRankingScore, ResponseBinnedRankingScore, ResponseRankingScore
 from orchestration.api.utils import select_random_values
+from orchestration.api.utils.uuid64 import Uuid64
 from .api_utils import ApiResponseHandler, ErrorCode, StandardSuccessResponse, WasPresentResponse, ApiResponseHandlerV1, StandardSuccessResponseV1
 
 router = APIRouter()
@@ -496,11 +497,14 @@ async def get_images_grouped_by_rank_score_with_binning(
         # rank_score_query['score_field'] = score_field
         rank_score_query["rank_model_id"] = rank_model_id
         rank_scores = request.app.image_rank_scores_collection.find(rank_score_query)
+        if rank_scores:
+            rank_scores = list(rank_scores)
+        else:
+            rank_scores = []
         
         # If random_size is provided, select random values from the rank_scores
         if random_size:
             rank_scores = select_random_values(array=rank_scores, random_size=random_size)
-            
         # filter images based on bucket_ids and dataset_ids
         images = []
         query_for_all_images = {} # query for all images collection to filter out images that are not in the bucket_ids or dataset_ids
@@ -512,21 +516,33 @@ async def get_images_grouped_by_rank_score_with_binning(
                 query_conditions.append({"dataset_id": {"$in": dataset_ids}})
             if query_conditions:
                 query_for_all_images = {"$or": query_conditions}
+        
+        # Collect all UUIDs from rank_scores
+        image_uuids = list(Uuid64.from_mongo_value(rank_score["image_uuid"]).to_formatted_str() for rank_score in rank_scores)
+        # Prepare the query for all UUIDs
+        query_for_all_images["uuid"] = {"$in": image_uuids}
+        # Fetch all image data in one query
+        image_data_list = request.app.all_image_collection.find(query_for_all_images)
+        if image_data_list:
+            image_data_list = list(image_data_list)
+        else:
+            image_data_list = []
+        # Convert the cursor to a dictionary for easier access
+        image_data_set = (image_data["uuid"] for image_data in image_data_list)
+        # Create the images list using the fetched data
+        images = []
         for rank_score in rank_scores:
-            query_for_all_images["uuid"] = rank_score["uuid"]
-            image_data = request.app.all_image_collection.find_one(query_for_all_images)
-            if image_data:
-                image_data = dict(image_data)
+            uuid = rank_score["uuid"]
+            if uuid in image_data_set:
                 images.append({
-                    "uuid": rank_score["uuid"],
+                    "uuid": uuid,
                     "rank_model_id": rank_model_id,
                     "rank_id": rank_score["rank_id"],
                     "score": rank_score["score"],
                     "sigma_score": rank_score["sigma_score"],
                 })
-        
         # group images by rank score
-        binned_images = [[] for i in range(len(bins - 1))]
+        binned_images = [[] for i in range(len(bins) - 1)]
         for image in images:
             for i in range(len(bins - 1)):
                 if image["score"] >= bins[i] and image["score"] < bins[i + 1]:
@@ -549,4 +565,3 @@ async def get_images_grouped_by_rank_score_with_binning(
             error_string=str(e),
             http_status_code=500
         )
-    pass
