@@ -2,7 +2,7 @@ from pymongo import MongoClient, UpdateOne
 from minio import Minio
 from minio.error import S3Error
 
-def process_collection(db, collection, minio_client, all_existing_hashes, hash_field):
+def process_collection(db, collection, minio_client, temp_collection_name, hash_field):
     """
     Process each collection using an aggregation pipeline to avoid DocumentTooLarge errors.
     """
@@ -10,18 +10,13 @@ def process_collection(db, collection, minio_client, all_existing_hashes, hash_f
     batch_size = 100
     orphaned_count = 0
 
-    # Create a temporary collection to hold the hashes
-    temp_collection_name = "temp_hashes"
-    db[temp_collection_name].insert_many([{hash_field: hash_value} for hash_value in all_existing_hashes])
-    print(f"Temporary collection {temp_collection_name} created.")
-
     # Use aggregation pipeline with $lookup to find orphaned documents
     pipeline = [
         {
             "$lookup": {
                 "from": temp_collection_name,
                 "localField": hash_field,
-                "foreignField": hash_field,
+                "foreignField": "hash_value",
                 "as": "matched_hashes"
             }
         },
@@ -34,13 +29,14 @@ def process_collection(db, collection, minio_client, all_existing_hashes, hash_f
 
     print(f"Running aggregation pipeline on {collection.name}...")
     orphaned_docs_cursor = collection.aggregate(pipeline, allowDiskUse=True)
-    orphaned_count = len(list(orphaned_docs_cursor))
+    orphaned_docs = list(orphaned_docs_cursor)
+    orphaned_count = len(orphaned_docs)
     print(f"Found {orphaned_count} orphaned documents in {collection.name}.")
 
     if orphaned_count > 0:
         print(f"Removing {orphaned_count} orphaned documents from {collection.name}...")
 
-        for doc in orphaned_docs_cursor:
+        for doc in orphaned_docs:
             file_path = doc.get("file_path") or doc.get("task_output_file_dict", {}).get("output_file_path")
             if file_path:
                 print(f"Processing document with file_path: {file_path}")
@@ -52,14 +48,10 @@ def process_collection(db, collection, minio_client, all_existing_hashes, hash_f
                         print(f"Error processing file path: {file_path}")
 
         # Remove the orphaned documents
-        collection.delete_many({"_id": {"$in": [doc["_id"] for doc in orphaned_docs_cursor]}})
+        collection.delete_many({"_id": {"$in": [doc["_id"] for doc in orphaned_docs]}})
         print(f"Removed {orphaned_count} documents from {collection.name}.")
     else:
         print(f"No orphaned documents found in {collection.name}.")
-
-    # Drop the temporary collection
-    db[temp_collection_name].drop()
-    print(f"Temporary collection {temp_collection_name} dropped.")
 
 def get_existing_hashes(db):
     completed_jobs_hashes = set()
@@ -107,10 +99,13 @@ def delete_files_from_minio(minio_client, bucket_name, object_name):
             print(f"Removed {file} from {bucket_name}")
         except S3Error as e:
             if e.code == 'NoSuchKey':
+                print(f"File {file} not found in {bucket_name}, skipping.")
                 continue
             else:
+                print(f"Error removing {file} from {bucket_name}: {e}")
                 raise e
         except Exception as e:
+            print(f"Error removing {file} from {bucket_name}: {e}")
             raise e
 
 def main():
@@ -126,6 +121,11 @@ def main():
 
     all_existing_hashes = get_existing_hashes(db)
     print(f"Total existing hashes: {len(all_existing_hashes)}")
+
+    # Create the temporary collection once
+    temp_collection_name = "temp_hashes"
+    db[temp_collection_name].insert_many([{"hash_value": hash_value} for hash_value in all_existing_hashes])
+    print(f"Temporary collection {temp_collection_name} created.")
 
     collections_to_remove = [
         db.image_tags_collection,
@@ -148,7 +148,11 @@ def main():
         if collection.name == "irrelevant_images_collection":
             hash_field = "file_hash"
 
-        process_collection(db, collection, minio_client, all_existing_hashes, hash_field)
+        process_collection(db, collection, minio_client, temp_collection_name, hash_field)
+
+    # Drop the temporary collection once all processing is done
+    db[temp_collection_name].drop()
+    print(f"Temporary collection {temp_collection_name} dropped.")
 
     print("Cleanup completed.")
 
