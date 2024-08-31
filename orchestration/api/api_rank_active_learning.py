@@ -19,6 +19,8 @@ from collections import OrderedDict
 import io
 import random
 import time
+from orchestration.api.api_utils import get_bucket_id
+
 
 router = APIRouter()
  
@@ -424,6 +426,28 @@ async def add_datapoints(request: Request, selection: RankSelection, image_sourc
         dict_data['image_1_metadata']['image_source'] = image_source
         dict_data['image_2_metadata']['image_source'] = image_source
 
+        # Get image_uuid for image_1_metadata
+        image_1_hash = dict_data['image_1_metadata']['file_hash']
+        image_1_uuid = request.app.all_image_collection.find_one(
+            {"image_hash": image_1_hash, "bucket_id": get_bucket_id(image_source)},
+            {"uuid": 1}
+        )
+        if image_1_uuid:
+            dict_data['image_1_metadata']['image_uuid'] = image_1_uuid['uuid']
+        else:
+            print(f"Image UUID not found for image_1_metadata with hash: {image_1_hash}")
+
+        # Get image_uuid for image_2_metadata
+        image_2_hash = dict_data['image_2_metadata']['file_hash']
+        image_2_uuid = request.app.all_image_collection.find_one(
+            {"image_hash": image_2_hash, "bucket_id": get_bucket_id(image_source)},
+            {"uuid": 1}
+        )
+        if image_2_uuid:
+            dict_data['image_2_metadata']['image_uuid'] = image_2_uuid['uuid']
+        else:
+            print(f"Image UUID not found for image_2_metadata with hash: {image_2_hash}")
+
         # Prepare ordered data for MongoDB insertion
         mongo_data = OrderedDict([
             ("_id", ObjectId()),  # Generate new ObjectId
@@ -470,7 +494,8 @@ async def add_datapoints(request: Request, selection: RankSelection, image_sourc
             error_string=str(e),
             http_status_code=500
         )
-    
+
+
 
 @router.post("/rank-training/add-ranking-data-point-v1", 
              status_code=201,
@@ -518,6 +543,30 @@ async def add_datapoints_v1(request: Request, selection: RankSelectionV1):
         file_name = f"{current_time}-{selection.username}.json"
 
         dict_data = selection.to_dict()
+
+        # Fetch image_uuid for image_1_metadata
+        image_1_hash = dict_data['image_1_metadata']['file_hash']
+        image_1_source = dict_data['image_1_metadata']['image_source']
+        image_1_uuid = request.app.all_image_collection.find_one(
+            {"image_hash": image_1_hash, "bucket_id": get_bucket_id(image_1_source)},
+            {"uuid": 1}
+        )
+        if image_1_uuid:
+            dict_data['image_1_metadata']['image_uuid'] = image_1_uuid['uuid']
+        else:
+            print(f"Image UUID not found for image_1_metadata with hash: {image_1_hash} and source: {image_1_source}")
+
+        # Fetch image_uuid for image_2_metadata
+        image_2_hash = dict_data['image_2_metadata']['file_hash']
+        image_2_source = dict_data['image_2_metadata']['image_source']
+        image_2_uuid = request.app.all_image_collection.find_one(
+            {"image_hash": image_2_hash, "bucket_id": get_bucket_id(image_2_source)},
+            {"uuid": 1}
+        )
+        if image_2_uuid:
+            dict_data['image_2_metadata']['image_uuid'] = image_2_uuid['uuid']
+        else:
+            print(f"Image UUID not found for image_2_metadata with hash: {image_2_hash} and source: {image_2_source}")
 
         # Prepare ordered data for MongoDB insertion
         mongo_data = OrderedDict([
