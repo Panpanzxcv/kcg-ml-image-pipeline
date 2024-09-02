@@ -554,7 +554,11 @@ async def add_datapoints_v1(request: Request, selection: RankSelectionV1):
         if image_1_uuid:
             dict_data['image_1_metadata']['image_uuid'] = image_1_uuid['uuid']
         else:
-            print(f"Image UUID not found for image_1_metadata with hash: {image_1_hash} and source: {image_1_source}")
+            return api_handler.create_error_response_v1(
+                error_code=ErrorCode.ELEMENT_NOT_FOUND,
+                error_string=f"Image UUID not found for image_1_metadata with hash: {image_1_hash} and source: {image_1_source}",
+                http_status_code=404
+            )
 
         # Fetch image_uuid for image_2_metadata
         image_2_hash = dict_data['image_2_metadata']['file_hash']
@@ -566,7 +570,11 @@ async def add_datapoints_v1(request: Request, selection: RankSelectionV1):
         if image_2_uuid:
             dict_data['image_2_metadata']['image_uuid'] = image_2_uuid['uuid']
         else:
-            print(f"Image UUID not found for image_2_metadata with hash: {image_2_hash} and source: {image_2_source}")
+            return api_handler.create_error_response_v1(
+                error_code=ErrorCode.ELEMENT_NOT_FOUND,
+                error_string=f"Image UUID not found for image_2_metadata with hash: {image_2_hash} and source: {image_2_source}",
+                http_status_code=404
+            )
 
         # Prepare ordered data for MongoDB insertion
         mongo_data = OrderedDict([
@@ -614,6 +622,7 @@ async def add_datapoints_v1(request: Request, selection: RankSelectionV1):
             error_string=str(e),
             http_status_code=500
         )
+
 
 
 @router.get("/rank-training/list-ranking-datapoints",
