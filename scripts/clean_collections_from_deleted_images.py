@@ -95,7 +95,6 @@ def main():
         db.image_pair_ranking_collection,
         db.irrelevant_images_collection,
         db.image_hashes_collection,
-        db.ranking_datapoints_collection,
     ]
 
     for collection in collections_to_remove:
