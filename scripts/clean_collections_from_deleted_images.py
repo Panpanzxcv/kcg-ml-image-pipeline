@@ -30,9 +30,9 @@ def process_collection(collection, minio_client, all_existing_hashes, hash_field
     print(f"Total orphaned documents removed from {collection.name}: {orphaned_count}")
 
 def get_existing_hashes(db):
-    completed_jobs_hashes = set()
+    combined_hashes = set()
 
-    # Fetch hashes only from completed-jobs where task_input_dict.dataset exists
+    # Fetch hashes from completed-jobs where task_input_dict.dataset exists
     print(f"Fetching hashes from completed-jobs where task_input_dict.dataset exists...")
     try:
         cursor = db["completed-jobs"].find({"task_input_dict.dataset": {"$exists": True}}, 
@@ -40,13 +40,34 @@ def get_existing_hashes(db):
         for doc in cursor:
             hash_value = doc.get("task_output_file_dict", {}).get("output_file_hash")
             if hash_value:
-                completed_jobs_hashes.add(hash_value)
+                combined_hashes.add(hash_value)
     except Exception as e:
         print(f"Error fetching from completed-jobs: {e}")
 
-    all_existing_hashes = completed_jobs_hashes
-    print(f"Total combined hashes: {len(all_existing_hashes)}")
-    return all_existing_hashes
+    # Fetch hashes from extracts
+    print(f"Fetching hashes from extracts...")
+    try:
+        cursor = db["extracts"].find({}, {"image_hash": 1})
+        for doc in cursor:
+            hash_value = doc.get("image_hash")
+            if hash_value:
+                combined_hashes.add(hash_value)
+    except Exception as e:
+        print(f"Error fetching from extracts: {e}")
+
+    # Fetch hashes from external_images
+    print(f"Fetching hashes from external_images...")
+    try:
+        cursor = db["external_images"].find({}, {"image_hash": 1})
+        for doc in cursor:
+            hash_value = doc.get("image_hash")
+            if hash_value:
+                combined_hashes.add(hash_value)
+    except Exception as e:
+        print(f"Error fetching from external_images: {e}")
+
+    print(f"Total combined hashes: {len(combined_hashes)}")
+    return combined_hashes
 
 def delete_files_from_minio(minio_client, bucket_name, object_name):
     files_to_delete = [
