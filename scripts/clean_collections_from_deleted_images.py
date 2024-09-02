@@ -1,32 +1,33 @@
-from pymongo import MongoClient, UpdateOne
+from pymongo import MongoClient
 from minio import Minio
 from minio.error import S3Error
 
 def process_collection(collection, minio_client, all_existing_hashes, hash_field):
     """
-    Process each collection in batches to avoid DocumentTooLarge errors.
+    Process each document in the collection and remove only the orphaned ones.
     """
-    batch_size = 500
-    orphaned_docs_cursor = collection.find({hash_field: {"$nin": list(all_existing_hashes)}}).batch_size(batch_size)
-    orphaned_count = collection.count_documents({hash_field: {"$nin": list(all_existing_hashes)}})
+    batch_size = 500  # Adjust as needed
+    cursor = collection.find({}, {hash_field: 1}).batch_size(batch_size)
 
-    if orphaned_count > 0:
-        print(f"Removing {orphaned_count} orphaned documents from {collection.name}...")
-
-        for doc in orphaned_docs_cursor:
-            if collection.name == "all-images":
-                file_path = doc.get("file_path") or doc.get("task_output_file_dict", {}).get("output_file_path")
-                if file_path:
+    orphaned_count = 0
+    for doc in cursor:
+        doc_hash = doc.get(hash_field)
+        if doc_hash not in all_existing_hashes:
+            orphaned_count += 1
+            file_path = doc.get("file_path") or doc.get("task_output_file_dict", {}).get("output_file_path")
+            if file_path:
+                print(f"Processing orphaned document with file_path: {file_path}")
+                if collection.name == "all-images":
                     try:
                         bucket_name, object_name = file_path.split('/', 1)
                         delete_files_from_minio(minio_client, bucket_name, object_name)
                     except ValueError:
                         print(f"Error processing file path: {file_path}")
 
-        # Remove the orphaned documents
-        collection.delete_many({hash_field: {"$nin": list(all_existing_hashes)}})
-    else:
-        print(f"No orphaned documents found in {collection.name}.")
+            # Remove the orphaned document
+            collection.delete_one({"_id": doc["_id"]})
+
+    print(f"Total orphaned documents removed from {collection.name}: {orphaned_count}")
 
 def get_existing_hashes(db):
     completed_jobs_hashes = set()
@@ -43,8 +44,9 @@ def get_existing_hashes(db):
     except Exception as e:
         print(f"Error fetching from completed-jobs: {e}")
 
-    print(f"Total combined hashes: {len(completed_jobs_hashes)}")
-    return completed_jobs_hashes
+    all_existing_hashes = completed_jobs_hashes
+    print(f"Total combined hashes: {len(all_existing_hashes)}")
+    return all_existing_hashes
 
 def delete_files_from_minio(minio_client, bucket_name, object_name):
     files_to_delete = [
