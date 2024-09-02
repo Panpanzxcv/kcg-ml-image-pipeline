@@ -16,9 +16,9 @@ def process_collection(collection, minio_client, db, hash_field):
     for doc in cursor:
         doc_hash = doc.get(hash_field)
         if not doc_hash:
-            print(f"Skipping document with missing {hash_field}")
+            print(f"Document {_id} skipped due to missing {hash_field}")
             continue
-
+        
         print(f"Checking document with {hash_field}: {doc_hash}")
 
         # Check if the hash exists in any of the primary collections
@@ -26,6 +26,13 @@ def process_collection(collection, minio_client, db, hash_field):
         in_extracts = db["extracts"].find_one({"image_hash": doc_hash})
         in_external_images = db["external_images"].find_one({"image_hash": doc_hash})
 
+        if in_completed_jobs:
+            print(f"Document with {hash_field}: {doc_hash} found in completed-jobs")
+        if in_extracts:
+            print(f"Document with {hash_field}: {doc_hash} found in extracts")
+        if in_external_images:
+            print(f"Document with {hash_field}: {doc_hash} found in external_images")
+        
         if not (in_completed_jobs or in_extracts or in_external_images):
             orphaned_count += 1
             print(f"Orphaned document found with {hash_field}: {doc_hash}")
