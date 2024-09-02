@@ -9,13 +9,18 @@ def process_collection(collection, minio_client, db, hash_field):
     """
     orphaned_count = 0
 
+    print(f"Starting to process collection: {collection.name}")
+    
     cursor = collection.find({}, {hash_field: 1})
     
     for doc in cursor:
         doc_hash = doc.get(hash_field)
         if not doc_hash:
+            print(f"Skipping document with missing {hash_field}")
             continue
-        
+
+        print(f"Checking document with {hash_field}: {doc_hash}")
+
         # Check if the hash exists in any of the primary collections
         in_completed_jobs = db["completed-jobs"].find_one({"task_output_file_dict.output_file_hash": doc_hash})
         in_extracts = db["extracts"].find_one({"image_hash": doc_hash})
@@ -23,6 +28,7 @@ def process_collection(collection, minio_client, db, hash_field):
 
         if not (in_completed_jobs or in_extracts or in_external_images):
             orphaned_count += 1
+            print(f"Orphaned document found with {hash_field}: {doc_hash}")
             file_path = doc.get("file_path") or doc.get("task_output_file_dict", {}).get("output_file_path")
             if file_path:
                 print(f"Processing orphaned document with file_path: {file_path}")
@@ -35,6 +41,7 @@ def process_collection(collection, minio_client, db, hash_field):
 
             # Remove the orphaned document
             collection.delete_one({"_id": doc["_id"]})
+            print(f"Removed orphaned document with {hash_field}: {doc_hash}")
 
     print(f"Total orphaned documents removed from {collection.name}: {orphaned_count}")
 
@@ -54,10 +61,13 @@ def delete_files_from_minio(minio_client, bucket_name, object_name):
             print(f"Removed {file} from {bucket_name}")
         except S3Error as e:
             if e.code == 'NoSuchKey':
+                print(f"File {file} not found in {bucket_name}, skipping removal.")
                 continue
             else:
+                print(f"Error removing {file} from {bucket_name}: {e}")
                 raise e
         except Exception as e:
+            print(f"General error removing {file} from {bucket_name}: {e}")
             raise e
 
 def main():
