@@ -10,16 +10,20 @@ def process_collection(collection, minio_client, db, hash_field):
     orphaned_count = 0
 
     print(f"Starting to process collection: {collection.name}")
+    total_docs = collection.count_documents({})
+    print(f"Total documents in {collection.name}: {total_docs}")
     
     cursor = collection.find({}, {hash_field: 1})
+    processed_docs = 0
     
     for doc in cursor:
+        processed_docs += 1
         doc_hash = doc.get(hash_field)
         if not doc_hash:
-            print(f"Document {_id} skipped due to missing {hash_field}")
+            print(f"Document with _id: {doc['_id']} skipped due to missing {hash_field}")
             continue
         
-        print(f"Checking document with {hash_field}: {doc_hash}")
+        print(f"Checking document with _id: {doc['_id']} and {hash_field}: {doc_hash}")
 
         # Check if the hash exists in any of the primary collections
         in_completed_jobs = db["completed-jobs"].find_one({"task_output_file_dict.output_file_hash": doc_hash})
@@ -48,8 +52,9 @@ def process_collection(collection, minio_client, db, hash_field):
 
             # Remove the orphaned document
             collection.delete_one({"_id": doc["_id"]})
-            print(f"Removed orphaned document with {hash_field}: {doc_hash}")
+            print(f"Removed orphaned document with _id: {doc['_id']} and {hash_field}: {doc_hash}")
 
+    print(f"Processed {processed_docs} documents in {collection.name}")
     print(f"Total orphaned documents removed from {collection.name}: {orphaned_count}")
 
 def delete_files_from_minio(minio_client, bucket_name, object_name):
