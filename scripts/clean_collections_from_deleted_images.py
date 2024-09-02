@@ -1,95 +1,62 @@
-from pymongo import MongoClient, UpdateOne
+from pymongo import MongoClient
 from minio import Minio
 from minio.error import S3Error
 
-def process_collection(db, collection, minio_client, all_existing_hashes, hash_field):
+def process_collection(collection_name, minio_client, db, hash_field):
     """
-    Process each collection using an aggregation pipeline to avoid DocumentTooLarge errors.
+    Iterate through each document in the collection and remove it if the hash does not exist
+    in the completed-jobs, extracts, or external_images collections.
     """
-    print(f"Processing collection: {collection.name}")
-    batch_size = 100
+    collection = db[collection_name]
     orphaned_count = 0
 
-    # Create a temporary collection to hold the hashes
-    temp_collection_name = "temp_hashes"
-    db[temp_collection_name].insert_many([{hash_field: hash_value} for hash_value in all_existing_hashes])
-    print(f"Temporary collection {temp_collection_name} created.")
+    print(f"Starting to process collection: {collection_name}")
+    total_docs = collection.count_documents({})
+    print(f"Total documents in {collection_name}: {total_docs}")
+    
+    cursor = collection.find({}, {hash_field: 1})
+    processed_docs = 0
+    
+    for doc in cursor:
+        processed_docs += 1
+        doc_hash = doc.get(hash_field)
+        if not doc_hash:
+            print(f"Document with _id: {doc['_id']} skipped due to missing {hash_field}")
+            continue
+        
+        print(f"Checking document with _id: {doc['_id']} and {hash_field}: {doc_hash}")
 
-    # Use aggregation pipeline with $lookup to find orphaned documents
-    pipeline = [
-        {
-            "$lookup": {
-                "from": temp_collection_name,
-                "localField": hash_field,
-                "foreignField": hash_field,
-                "as": "matched_hashes"
-            }
-        },
-        {
-            "$match": {
-                "matched_hashes": {"$eq": []}
-            }
-        }
-    ]
+        # Check if the hash exists in any of the primary collections
+        in_completed_jobs = db["completed-jobs"].find_one({"task_output_file_dict.output_file_hash": doc_hash})
+        in_extracts = db["extracts"].find_one({"image_hash": doc_hash})
+        in_external_images = db["external_images"].find_one({"image_hash": doc_hash})
 
-    print(f"Running aggregation pipeline on {collection.name}...")
-    orphaned_docs_cursor = collection.aggregate(pipeline, allowDiskUse=True)
-    orphaned_count = len(list(orphaned_docs_cursor))
-    print(f"Found {orphaned_count} orphaned documents in {collection.name}.")
-
-    if orphaned_count > 0:
-        print(f"Removing {orphaned_count} orphaned documents from {collection.name}...")
-
-        for doc in orphaned_docs_cursor:
+        if in_completed_jobs:
+            print(f"Document with {hash_field}: {doc_hash} found in completed-jobs")
+        if in_extracts:
+            print(f"Document with {hash_field}: {doc_hash} found in extracts")
+        if in_external_images:
+            print(f"Document with {hash_field}: {doc_hash} found in external_images")
+        
+        if not (in_completed_jobs or in_extracts or in_external_images):
+            orphaned_count += 1
+            print(f"Orphaned document found with {hash_field}: {doc_hash}")
             file_path = doc.get("file_path") or doc.get("task_output_file_dict", {}).get("output_file_path")
             if file_path:
-                print(f"Processing document with file_path: {file_path}")
-                if collection.name == "all-images":
+                print(f"Processing orphaned document with file_path: {file_path}")
+                if collection_name == "all-images":
                     try:
                         bucket_name, object_name = file_path.split('/', 1)
                         delete_files_from_minio(minio_client, bucket_name, object_name)
                     except ValueError:
                         print(f"Error processing file path: {file_path}")
 
-        # Remove the orphaned documents
-        collection.delete_many({"_id": {"$in": [doc["_id"] for doc in orphaned_docs_cursor]}})
-        print(f"Removed {orphaned_count} documents from {collection.name}.")
-    else:
-        print(f"No orphaned documents found in {collection.name}.")
+            # Remove the orphaned document
+            collection.delete_one({"_id": doc["_id"]})
+            print(f"Removed orphaned document with _id: {doc['_id']} and {hash_field}: {doc_hash}")
 
-    # Drop the temporary collection
-    db[temp_collection_name].drop()
-    print(f"Temporary collection {temp_collection_name} dropped.")
-
-def get_existing_hashes(db):
-    completed_jobs_hashes = set()
-    extracts_hashes = set()
-    external_images_hashes = set()
-
-    # Process collections in smaller batches and accumulate hashes
-    for collection_name, hash_key in [
-        ("completed-jobs", "task_output_file_dict.output_file_hash"),
-        ("extracts", "image_hash"),
-        ("external_images", "image_hash"),
-    ]:
-        print(f"Fetching hashes from {collection_name}...")
-        try:
-            cursor = db[collection_name].find({}, {hash_key: 1})
-            for doc in cursor:
-                hash_value = doc.get(hash_key)
-                if hash_value:
-                    if collection_name == "completed-jobs":
-                        completed_jobs_hashes.add(hash_value)
-                    elif collection_name == "extracts":
-                        extracts_hashes.add(hash_value)
-                    elif collection_name == "external_images":
-                        external_images_hashes.add(hash_value)
-        except Exception as e:
-            print(f"Error fetching from {collection_name}: {e}")
-
-    all_existing_hashes = completed_jobs_hashes.union(extracts_hashes).union(external_images_hashes)
-    print(f"Total combined hashes: {len(all_existing_hashes)}")
-    return all_existing_hashes
+    print(f"Processed {processed_docs} documents in {collection_name}")
+    print(f"Total orphaned documents removed from {collection_name}: {orphaned_count}")
 
 def delete_files_from_minio(minio_client, bucket_name, object_name):
     files_to_delete = [
@@ -107,10 +74,13 @@ def delete_files_from_minio(minio_client, bucket_name, object_name):
             print(f"Removed {file} from {bucket_name}")
         except S3Error as e:
             if e.code == 'NoSuchKey':
+                print(f"File {file} not found in {bucket_name}, skipping removal.")
                 continue
             else:
+                print(f"Error removing {file} from {bucket_name}: {e}")
                 raise e
         except Exception as e:
+            print(f"General error removing {file} from {bucket_name}: {e}")
             raise e
 
 def main():
@@ -124,31 +94,28 @@ def main():
         secure=False
     )
 
-    all_existing_hashes = get_existing_hashes(db)
-    print(f"Total existing hashes: {len(all_existing_hashes)}")
-
     collections_to_remove = [
-        db.image_tags_collection,
-        db.all_image_collection,
-        db.image_rank_scores_collection,
-        db.image_classifier_scores_collection,
-        db.image_sigma_scores_collection,
-        db.image_residuals_collection,
-        db.image_percentiles_collection,
-        db.image_residual_percentiles_collection,
-        db.image_rank_use_count_collection,
-        db.image_pair_ranking_collection,
-        db.irrelevant_images_collection,
-        db.image_hashes_collection,
-        db.ranking_datapoints_collection,
+        "image_tags",
+        "all-images",
+        "image_rank_scores",
+        "image_classifier_scores",
+        "image-sigma-scores",
+        "image-residuals",
+        "image-percentiles",
+        "image-residual-percentiles",
+        "image-rank-use-coun",
+        "image_pair_ranking",
+        "irrelevant_images",
+        "image_hashes",
+        "ranking_datapoints"
     ]
 
-    for collection in collections_to_remove:
+    for collection_name in collections_to_remove:
         hash_field = "image_hash"
-        if collection.name == "irrelevant_images_collection":
+        if collection_name == "irrelevant_images":
             hash_field = "file_hash"
 
-        process_collection(db, collection, minio_client, all_existing_hashes, hash_field)
+        process_collection(collection_name, minio_client, db, hash_field)
 
     print("Cleanup completed.")
 
