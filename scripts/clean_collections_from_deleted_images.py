@@ -7,10 +7,9 @@ def process_collection(collection, minio_client, db, hash_field):
     Iterate through each document in the collection and remove it if the hash does not exist
     in the completed-jobs, extracts, or external_images collections.
     """
-    batch_size = 500  # Adjust as needed
     orphaned_count = 0
 
-    cursor = collection.find({}, {hash_field: 1}).batch_size(batch_size)
+    cursor = collection.find({}, {hash_field: 1})
     
     for doc in cursor:
         doc_hash = doc.get(hash_field)
