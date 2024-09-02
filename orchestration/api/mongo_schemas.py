@@ -885,16 +885,6 @@ class ListVideoGame(BaseModel):
     
 class ListVideoMetaData(BaseModel):
     data: List[VideoMetaData]
-        
-class Bin(BaseModel):
-    min_score: float
-    max_score: float
-    
-    def to_dict(self):
-        return {
-            "min_score": self.min_score,
-            "max_score": self.max_score,
-        }
 
 class ResponseBinnedRankingScore(BaseModel):
-    bins: List[RankingScore]
+    scores: List[List[RankingScore]]

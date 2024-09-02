@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from email.mime import image
 import random
 import uuid
-from fastapi import Request, APIRouter, HTTPException, Query, Body
+from fastapi import Request, APIRouter, HTTPException, Query, Query
 from typing import List, Optional, Tuple
 from typing_extensions import Annotated
 
@@ -456,7 +456,7 @@ def delete_image_rank_score_by_hash(
     return api_response_handler.create_success_delete_response_v1(res.deleted_count != 0)
 
 
-@router.post("/image-scores/scores/list-rank-scores-with-binning", 
+@router.get("/image-scores/scores/list-rank-scores-with-binning", 
                description="Get images grouped by rank score with binning",
                status_code=200,
                tags=["image scores"], 
@@ -464,12 +464,13 @@ def delete_image_rank_score_by_hash(
                responses=ApiResponseHandlerV1.listErrors([422]))
 async def get_images_grouped_by_rank_score_with_binning(
     request: Request, 
-    bins: List[int] = Body(description="The bins to use for grouping, e.x., [0, 5, 10]"),
-    rank_model_id: int = Body(),
-    bucket_ids: Optional[List[int]] = Body(default=None),
-    dataset_ids: Optional[List[int]] = Body(default=None),
-    random_size: Optional[int] = Body(default=None),
-    max_count: int = Body(default=20),
+    bins: List[float] = Query(description="The boundaries for grouping images based on their score values. The bins are specified as a list of integers, where each integer denotes a boundary. The first element of the bins list represents the lower boundary of the first bin, and the last element represents the upper boundary of the last bin. Each subsequent pair of integers defines a range: the first integer is inclusive (lower bound), and the second integer is exclusive (upper bound)."),
+    rank_model_id: int = Query(), 
+    score_field: str = Query(default="score", description="Choose the score field for sorting. Valid values are 'score' or 'sigma_score'."),
+    bucket_ids: Optional[List[int]] = Query(default=None),
+    dataset_ids: Optional[List[int]] = Query(default=None),
+    sample_size: Optional[int] = Query(default=10000),
+    max_count: int = Query(default=20),
 ):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
     try:
@@ -488,22 +489,17 @@ async def get_images_grouped_by_rank_score_with_binning(
         bins.sort()
         
         # build rank score query to get images with rank scores in the given bins
-        rank_score_query = {}
-        rank_score_query['score'] = {
-            '$gte': min(bins),
-            '$lte': max(bins)
+        rank_score_query = {
+            score_field: {'$gte': min(bins), '$lte': max(bins)},
+            "rank_model_id": rank_model_id,
         }
-        # rank_score_query['score_field'] = score_field
-        rank_score_query["rank_model_id"] = rank_model_id
-        rank_scores = request.app.image_rank_scores_collection.find(rank_score_query, {"_id": 0})
-        if rank_scores:
-            rank_scores = list(rank_scores)
-        else:
-            rank_scores = []
-        
-        # If random_size is provided, select random values from the rank_scores
-        if random_size:
-            rank_scores = select_random_values(array=rank_scores, random_size=random_size)
+        print(rank_score_query)
+        rank_scores = list(request.app.image_rank_scores_collection.aggregate([
+            {"$match": rank_score_query}, 
+            {"$sample": {"size": sample_size}}, 
+            {"$project": {"_id": 0}}
+        ]))
+        print(len(rank_scores))
         # filter images based on bucket_ids and dataset_ids
         images = []
         query_for_all_images = {} # query for all images collection to filter out images that are not in the bucket_ids or dataset_ids
@@ -521,11 +517,7 @@ async def get_images_grouped_by_rank_score_with_binning(
         # Prepare the query for all image hashes
         query_for_all_images["image_hash"] = {"$in": image_hashes}
         # Fetch all image data in one query
-        image_data_list = request.app.all_image_collection.find(query_for_all_images)
-        if image_data_list:
-            image_data_list = list(image_data_list)
-        else:
-            image_data_list = []
+        image_data_list = list(request.app.all_image_collection.find(query_for_all_images, {"image_hash": 1}))
         # Convert the cursor to a dictionary for easier access
         image_data_set = set([image_data["image_hash"] for image_data in image_data_list])
         # Create the images list using the fetched data
