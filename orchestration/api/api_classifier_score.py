@@ -1103,7 +1103,8 @@ async def set_image_classifier_score_v2(
             query = {
                 "classifier_id": classifier_score.classifier_id,
                 "uuid": classifier_score.job_uuid,
-                "image_source": classifier_score.image_source
+                "image_source": classifier_score.image_source,
+                "image_uuid": classifier_score.image_uuid
             }
 
             new_score_data = {
@@ -1113,7 +1114,8 @@ async def set_image_classifier_score_v2(
                 "score": classifier_score.score,
                 "image_hash": classifier_score.image_hash,
                 "creation_time": datetime.utcnow().isoformat(),
-                "image_source": classifier_score.image_source
+                "image_source": classifier_score.image_source,
+                "image_uuid": classifier_score.image_uuid
             }
 
             update_operation = UpdateOne(
@@ -1160,7 +1162,8 @@ async def set_image_classifier_score_bulk(
             query = {
                 "classifier_id": classifier_score.classifier_id,
                 "uuid": classifier_score.job_uuid,
-                "image_source": classifier_score.image_source
+                "image_source": classifier_score.image_source,
+                "image_uuid": classifier_score.image_uuid
             }
 
             new_score_data = {
@@ -1170,7 +1173,8 @@ async def set_image_classifier_score_bulk(
                 "score": classifier_score.score,
                 "image_hash": classifier_score.image_hash,
                 "creation_time": datetime.utcnow().isoformat(),
-                "image_source": classifier_score.image_source
+                "image_source": classifier_score.image_source,
+                "image_uuid": classifier_score.image_uuid
             }
 
             update_operation = UpdateOne(

@@ -2,19 +2,20 @@ from pymongo import MongoClient
 from minio import Minio
 from minio.error import S3Error
 
-def process_collection(collection_name, minio_client, db, hash_field):
+def process_collection(collection_name, minio_client, db, hash_field, all_existing_hashes):
     """
     Iterate through each document in the collection and remove it if the hash does not exist
-    in the completed-jobs, extracts, or external_images collections.
+    in the precompiled set of all existing hashes.
     """
     collection = db[collection_name]
     orphaned_count = 0
+    ids_to_remove = []
 
     print(f"Starting to process collection: {collection_name}")
     total_docs = collection.count_documents({})
     print(f"Total documents in {collection_name}: {total_docs}")
     
-    cursor = collection.find({}, {hash_field: 1})
+    cursor = collection.find({}, {hash_field: 1}).batch_size(1000)
     processed_docs = 0
     
     for doc in cursor:
@@ -26,19 +27,8 @@ def process_collection(collection_name, minio_client, db, hash_field):
         
         print(f"Checking document with _id: {doc['_id']} and {hash_field}: {doc_hash}")
 
-        # Check if the hash exists in any of the primary collections
-        in_completed_jobs = db["completed-jobs"].find_one({"task_output_file_dict.output_file_hash": doc_hash})
-        in_extracts = db["extracts"].find_one({"image_hash": doc_hash})
-        in_external_images = db["external_images"].find_one({"image_hash": doc_hash})
-
-        if in_completed_jobs:
-            print(f"Document with {hash_field}: {doc_hash} found in completed-jobs")
-        if in_extracts:
-            print(f"Document with {hash_field}: {doc_hash} found in extracts")
-        if in_external_images:
-            print(f"Document with {hash_field}: {doc_hash} found in external_images")
-        
-        if not (in_completed_jobs or in_extracts or in_external_images):
+        # Check if the hash exists in the precompiled set of all existing hashes
+        if doc_hash not in all_existing_hashes:
             orphaned_count += 1
             print(f"Orphaned document found with {hash_field}: {doc_hash}")
             file_path = doc.get("file_path") or doc.get("task_output_file_dict", {}).get("output_file_path")
@@ -51,9 +41,13 @@ def process_collection(collection_name, minio_client, db, hash_field):
                     except ValueError:
                         print(f"Error processing file path: {file_path}")
 
-            # Remove the orphaned document
-            collection.delete_one({"_id": doc["_id"]})
-            print(f"Removed orphaned document with _id: {doc['_id']} and {hash_field}: {doc_hash}")
+            # Add the document's ID to the list of IDs to remove
+            ids_to_remove.append(doc["_id"])
+
+    # Bulk remove orphaned documents after processing all documents
+    if ids_to_remove:
+        collection.delete_many({"_id": {"$in": ids_to_remove}})
+        print(f"Removed {orphaned_count} documents from {collection_name}")
 
     print(f"Processed {processed_docs} documents in {collection_name}")
     print(f"Total orphaned documents removed from {collection_name}: {orphaned_count}")
@@ -83,6 +77,33 @@ def delete_files_from_minio(minio_client, bucket_name, object_name):
             print(f"General error removing {file} from {bucket_name}: {e}")
             raise e
 
+def get_all_existing_hashes(db):
+    completed_jobs_hashes = set()
+    extracts_hashes = set()
+    external_images_hashes = set()
+
+    # Fetch hashes from collections in smaller batches
+    for collection_name, hash_key in [
+        ("completed-jobs", "task_output_file_dict.output_file_hash"),
+        ("extracts", "image_hash"),
+        ("external_images", "image_hash"),
+    ]:
+        print(f"Fetching hashes from {collection_name}...")
+        cursor = db[collection_name].find({}, {hash_key: 1}).batch_size(1000)
+        for doc in cursor:
+            hash_value = doc.get(hash_key)
+            if hash_value:
+                if collection_name == "completed-jobs":
+                    completed_jobs_hashes.add(hash_value)
+                elif collection_name == "extracts":
+                    extracts_hashes.add(hash_value)
+                elif collection_name == "external_images":
+                    external_images_hashes.add(hash_value)
+
+    all_existing_hashes = completed_jobs_hashes.union(extracts_hashes).union(external_images_hashes)
+    print(f"Total combined hashes: {len(all_existing_hashes)}")
+    return all_existing_hashes
+
 def main():
     client = MongoClient("mongodb://192.168.3.1:32017/")
     db = client["orchestration-job-db"]
@@ -94,6 +115,10 @@ def main():
         secure=False
     )
 
+    # Get all existing hashes from the primary collections
+    all_existing_hashes = get_all_existing_hashes(db)
+    print(f"Total existing hashes: {len(all_existing_hashes)}")
+
     collections_to_remove = [
         "image_tags",
         "all-images",
@@ -103,7 +128,7 @@ def main():
         "image-residuals",
         "image-percentiles",
         "image-residual-percentiles",
-        "image-rank-use-coun",
+        "image-rank-use-count",
         "image_pair_ranking",
         "irrelevant_images",
         "image_hashes",
@@ -115,7 +140,7 @@ def main():
         if collection_name == "irrelevant_images":
             hash_field = "file_hash"
 
-        process_collection(collection_name, minio_client, db, hash_field)
+        process_collection(collection_name, minio_client, db, hash_field, all_existing_hashes)
 
     print("Cleanup completed.")
 

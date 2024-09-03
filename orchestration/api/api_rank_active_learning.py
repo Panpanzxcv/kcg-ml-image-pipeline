@@ -413,20 +413,16 @@ async def add_datapoints(request: Request, selection: RankSelection, image_sourc
                 {"rank_active_learning_policy_id": selection.rank_active_learning_policy_id}
             )
 
-        # Extract policy details only if policy is not None
-        rank_active_learning_policy = policy.get("rank_active_learning_policy", None) if policy else None
-
         current_time = datetime.utcnow().strftime('%Y-%m-%d-%H-%M-%S')
         file_name = f"{current_time}-{selection.username}.json"
         dataset = selection.image_1_metadata.file_path.split('/')[1]
         rank_model_string = rank.get("rank_model_string", None)
 
-        # Convert selection to dict and add image_source to image metadata
         dict_data = selection.to_dict()
         dict_data['image_1_metadata']['image_source'] = image_source
         dict_data['image_2_metadata']['image_source'] = image_source
 
-        # Get image_uuid for image_1_metadata
+        # Fetch image_uuid for image_1_metadata
         image_1_hash = dict_data['image_1_metadata']['file_hash']
         image_1_uuid = request.app.all_image_collection.find_one(
             {"image_hash": image_1_hash, "bucket_id": get_bucket_id(image_source)},
@@ -435,9 +431,13 @@ async def add_datapoints(request: Request, selection: RankSelection, image_sourc
         if image_1_uuid:
             dict_data['image_1_metadata']['image_uuid'] = image_1_uuid['uuid']
         else:
-            print(f"Image UUID not found for image_1_metadata with hash: {image_1_hash}")
+            return api_handler.create_error_response_v1(
+                error_code=ErrorCode.ELEMENT_NOT_FOUND,
+                error_string=f"Image UUID not found for image_1_metadata with hash: {image_1_hash} and source: {image_source}",
+                http_status_code=404
+            )
 
-        # Get image_uuid for image_2_metadata
+        # Fetch image_uuid for image_2_metadata
         image_2_hash = dict_data['image_2_metadata']['file_hash']
         image_2_uuid = request.app.all_image_collection.find_one(
             {"image_hash": image_2_hash, "bucket_id": get_bucket_id(image_source)},
@@ -446,7 +446,11 @@ async def add_datapoints(request: Request, selection: RankSelection, image_sourc
         if image_2_uuid:
             dict_data['image_2_metadata']['image_uuid'] = image_2_uuid['uuid']
         else:
-            print(f"Image UUID not found for image_2_metadata with hash: {image_2_hash}")
+            return api_handler.create_error_response_v1(
+                error_code=ErrorCode.ELEMENT_NOT_FOUND,
+                error_string=f"Image UUID not found for image_2_metadata with hash: {image_2_hash} and source: {image_source}",
+                http_status_code=404
+            )
 
         # Prepare ordered data for MongoDB insertion
         mongo_data = OrderedDict([
@@ -494,6 +498,7 @@ async def add_datapoints(request: Request, selection: RankSelection, image_sourc
             error_string=str(e),
             http_status_code=500
         )
+
 
 
 

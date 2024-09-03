@@ -299,7 +299,7 @@ def get_image_rank_scores_by_model_id(
     )
     
 @router.get("/image-scores/scores/list-rank-scores",
-            description="Get image rank scores by rank id with optional random sampling.",
+            description="Get image rank scores by rank id with optional random sampling. The min and max score filters, as well as sorting, will use the field specified in the 'score_field' parameter.",
             status_code=200,
             tags=["image scores"],  
             response_model=StandardSuccessResponseV1[ListRankingScore],  
@@ -307,7 +307,7 @@ def get_image_rank_scores_by_model_id(
 def list_rank_scores(
     request: Request, 
     rank_model_id: int, 
-    score_field: str = Query(..., description="Score field for selecting if the data must be sorted by score or sigma score."),
+    score_field: str = Query(..., description="Score field for filtering and sorting."),
     image_source: Optional[str] = Query(None, regex="^(generated_image|extract_image|external_image)$"),
     limit: int = Query(20, description="Limit for pagination"),
     offset: int = Query(0, description="Offset for pagination"),
@@ -342,22 +342,23 @@ def list_rank_scores(
             query['creation_time'] = {'$lte': end_date}
         elif threshold_time:
             query['creation_time'] = {'$gte': threshold_time.strftime("%Y-%m-%dT%H:%M:%S")}
-            
-        if min_score and max_score:
-            query['score'] = {
-                '$gte': min_score,
-                '$lte': max_score
-            }
-        elif min_score:
-            query['score'] = { '$gte': min_score }
-        elif max_score:
-            query['score'] = { '$lte': max_score }
+
+        # Apply score filtering based on score_field, min_score, and max_score
+        if min_score is not None or max_score is not None:
+            score_filter = {}
+            if min_score is not None:
+                score_filter['$gte'] = min_score
+            if max_score is not None:
+                score_filter['$lte'] = max_score
+            query[score_field] = score_filter
 
         # Modify behavior based on random_sampling parameter
         if random_sampling:
-            query_filter = {"$match": query}
-            sampling_stage = {"$sample": {"size": limit}}
-            pipeline = [query_filter, sampling_stage]
+            pipeline = [
+                {"$match": query},
+                {"$sort": {score_field: 1 if sort_order == 'asc' else -1}},
+                {"$sample": {"size": limit}}
+            ]
             items = list(request.app.image_rank_scores_collection.aggregate(pipeline))
         else:
             items = list(request.app.image_rank_scores_collection\
@@ -384,6 +385,7 @@ def list_rank_scores(
             error_string=str(e),
             http_status_code=500
         )
+
 
 
 @router.get("/image-scores/scores/get-image-rank-scores-by-hash",
