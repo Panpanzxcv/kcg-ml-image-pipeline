@@ -83,20 +83,31 @@ def get_all_existing_hashes(db):
 
     # Fetch hashes from collections in smaller batches
     for collection_name, hash_key in [
-        ("completed-jobs", "task_output_file_dict.output_file_hash"),
+        ("completed-jobs", "task_output_file_dict.output_file_hash"),  # Correctly accessing the nested field
         ("extracts", "image_hash"),
         ("external_images", "image_hash"),
     ]:
         print(f"Fetching hashes from {collection_name}...")
 
+        # Conditional query for 'completed-jobs' to ensure 'task_input_dict.dataset' exists
+        if collection_name == "completed-jobs":
+            query = {"task_input_dict.dataset": {"$exists": True}}
+        else:
+            query = {}
+
         # Initialize a counter for documents in the collection
         doc_count = 0
 
-        # Fetch all documents based on hash_key
-        cursor = db[collection_name].find({}, {hash_key: 1}).batch_size(1000)
+        # Fetch all documents based on query and hash_key, use dot notation for nested fields
+        cursor = db[collection_name].find(query, {hash_key: 1}).batch_size(1000)
         
         for doc in cursor:
-            hash_value = doc.get(hash_key)
+            # For completed-jobs, we need to extract the nested field 'output_file_hash' from 'task_output_file_dict'
+            if collection_name == "completed-jobs":
+                hash_value = doc.get("task_output_file_dict", {}).get("output_file_hash")
+            else:
+                hash_value = doc.get(hash_key)
+
             if hash_value:
                 doc_count += 1
                 if collection_name == "completed-jobs":
