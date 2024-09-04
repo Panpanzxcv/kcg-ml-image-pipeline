@@ -1,11 +1,13 @@
 from datetime import datetime, timedelta
 import uuid
 from fastapi import Request, APIRouter, HTTPException, Query
-from typing import Optional
+from typing import List, Optional
 
 from pymongo import UpdateOne
-from orchestration.api.mongo_schemas import RankingScore, ResponseRankingScore, ListRankingScore, ListOnlyRankingScore
-from .api_utils import ApiResponseHandler, ErrorCode, StandardSuccessResponse, WasPresentResponse, ApiResponseHandlerV1, StandardSuccessResponseV1
+from orchestration.api.mongo_schema.score_schemas import ScoreHelpers
+from orchestration.api.mongo_schemas import OldRankingScoreListForBatchInsertion, RankingScore, RankingScoreListForBatchInsertion, ResponseRankingScore, ListRankingScore, ListOnlyRankingScore
+from orchestration.api.utils.uuid64 import Uuid64
+from .api_utils import ApiResponseHandler, ErrorCode, StandardSuccessResponse, WasPresentResponse, ApiResponseHandlerV1, StandardSuccessResponseV1, get_bucket_id_for_image_source
 
 router = APIRouter()
 
@@ -17,23 +19,38 @@ async def set_image_rank_score(request: Request, ranking_score: RankingScore):
     # Check if image exists in the completed_jobs_collection using the provided uuid
     image_data = request.app.completed_jobs_collection.find_one(
         {"uuid": ranking_score.uuid},
-        {"image_uuid": 1}
+        {"task_output_file_dict.output_file_hash": 1, "image_uuid": 1}
     )
     if not image_data:
         raise HTTPException(status_code=404, detail="Image with the given uuid not found in completed jobs collection.")
 
-    image_uuid = image_data.get('image_uuid', None)
+    image_uuid = image_data.get('image_uuid')
+    image_hash = image_data.get('task_output_file_dict', {}).get('output_file_hash')
+    if not image_uuid or not image_hash:
+        raise HTTPException(status_code=422, detail="The image does not have a valid image uuid or hash.")
 
     # Check if the score already exists in image_rank_scores_collection
     query = {"uuid": ranking_score.uuid, "rank_model_id": ranking_score.rank_model_id}
     count = request.app.image_rank_scores_collection.count_documents(query)
     if count > 0:
         raise HTTPException(status_code=409, detail="Score for specific rank_model_id and uuid already exists.")
+    
+    additional_image_data = request.app.all_image_collection.find_one({"image_hash": image_hash, "bucket_id": 0}, {"bucket_id": 1, "dataset_id": 1})
+    if not additional_image_data:
+        raise HTTPException(status_code=422, detail="The image is not in the all-images collection.")
+    
+    image_bucket_id = additional_image_data.get('bucket_id')
+    image_dataset_id = additional_image_data.get('dataset_id')
+    if image_bucket_id == None or image_dataset_id == None:
+        raise HTTPException(status_code=422, detail="The image does not have a valid bucket id or dataset id.")
 
     # Add the image_source property set to "generated_image"
     ranking_score_data = ranking_score.dict()
     ranking_score_data['image_source'] = "generated_image"
+    ranking_score_data['image_hash'] = image_hash
     ranking_score_data['image_uuid'] = image_uuid
+    ranking_score_data['bucket_id'] = image_bucket_id
+    ranking_score_data['dataset_id'] = image_dataset_id
 
     # Insert the new ranking score
     request.app.image_rank_scores_collection.insert_one(ranking_score_data)
@@ -69,6 +86,19 @@ async def set_image_rank_score(
         return api_response_handler.create_error_response_v1(
             error_code=ErrorCode.INVALID_PARAMS,
             error_string="The provided rank_model_id does not exist in rank_collection.",
+            http_status_code=400
+        )
+    
+    # Check if the score already exists in image_rank_scores_collection
+    query = {
+        "uuid": ranking_score.uuid,
+        "rank_model_id": ranking_score.rank_model_id
+    }
+    count = request.app.image_rank_scores_collection.count_documents(query)
+    if count > 0:
+        return api_response_handler.create_error_response_v1(
+            error_code=ErrorCode.INVALID_PARAMS,
+            error_string="Score for specific uuid, rank_model_id, and image_hash already exists.",
             http_status_code=400
         )
 
@@ -118,19 +148,21 @@ async def set_image_rank_score(
 
     image_uuid = image_data.get('image_uuid', None)
 
-    # Check if the score already exists in image_rank_scores_collection
-    query = {
-        "uuid": ranking_score.uuid,
-        "image_hash": image_hash,
-        "rank_model_id": ranking_score.rank_model_id
-    }
-    count = request.app.image_rank_scores_collection.count_documents(query)
-    if count > 0:
+    if image_uuid == None or image_hash == None:
         return api_response_handler.create_error_response_v1(
-            error_code=ErrorCode.INVALID_PARAMS,
-            error_string="Score for specific uuid, rank_model_id, and image_hash already exists.",
-            http_status_code=400
+            error_code=ErrorCode.OTHER_ERROR,
+            error_string="The image does not have a valid image uuid or hash.",
+            http_status_code=422
         )
+    
+    additional_image_data = request.app.all_image_collection.find_one({"image_hash": image_hash, "bucket_id": get_bucket_id_for_image_source(image_source)}, {"bucket_id": 1, "dataset_id": 1})
+    if not additional_image_data:
+        raise HTTPException(status_code=422, detail="The image is not in the all-images collection.")
+    
+    image_bucket_id = additional_image_data.get('bucket_id')
+    image_dataset_id = additional_image_data.get('dataset_id')
+    if image_bucket_id == None or image_dataset_id == None:
+        raise HTTPException(status_code=422, detail="The image does not have a valid bucket id or dataset id.")
 
     # Insert the new ranking score
     ranking_score_data = ranking_score.dict()
@@ -138,9 +170,11 @@ async def set_image_rank_score(
     ranking_score_data['image_hash'] = image_hash
     ranking_score_data["creation_time"] = datetime.utcnow().isoformat() 
     ranking_score_data['image_uuid'] = image_uuid
+    ranking_score_data['bucket_id'] = image_bucket_id
+    ranking_score_data['dataset_id'] = image_dataset_id
     request.app.image_rank_scores_collection.insert_one(ranking_score_data)
 
-    ranking_score_data.pop('_id', None)
+    ScoreHelpers.clean_rank_score_for_api_response(ranking_score_data)
 
     return api_response_handler.create_success_response_v1(
         response_data=ranking_score_data,
@@ -151,23 +185,28 @@ async def set_image_rank_score(
 @router.post("/image-scores/scores/set-rank-score-batch", 
              status_code=200,
              response_model=StandardSuccessResponseV1[ListRankingScore],
-             description="Set rank image scores in a batch",
+             description="Set rank image scores in a batch. This endpoint is slower than the v1 version, because it gets some of the values from the database.",
              tags=["image scores"], 
              responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
 async def set_image_rank_score_batch(
     request: Request, 
-    batch_scores: ListRankingScore
+    batch_scores: OldRankingScoreListForBatchInsertion
 ):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
 
     try:
-        bulk_operations = []
-        response_data = []
+        initial_queries_for_adding = []
+        initial_scores_to_add = []
+        queries_for_getting_data = []
 
         for ranking_score in batch_scores.scores:
+            try:
+                bucket_id = get_bucket_id_for_image_source(ranking_score.image_source)
+            except Exception as e:
+                continue
+
             query = {
                 "uuid": ranking_score.uuid,
-                "image_hash": ranking_score.image_hash,
                 "rank_model_id": ranking_score.rank_model_id    
             }
 
@@ -180,7 +219,94 @@ async def set_image_rank_score_batch(
                 "image_hash": ranking_score.image_hash,
                 "creation_time": datetime.utcnow().isoformat(),
                 "image_source": ranking_score.image_source,
-                "image_uuid": ranking_score.image_uuid
+                "bucket_id": bucket_id
+            }
+
+            initial_queries_for_adding.append(query)
+            initial_scores_to_add.append(new_score_data)
+
+            queries_for_getting_data.append({'image_hash': ranking_score.image_hash, 'bucket_id': bucket_id})
+
+        additional_image_data_query = { '$or': queries_for_getting_data }
+        additional_image_data = request.app.all_image_collection.find(additional_image_data_query, {"uuid": 1, "image_hash": 1, "bucket_id": 1, "dataset_id": 1})
+
+        additional_image_data_map = {}
+        for img_data in additional_image_data:
+            additional_image_data_map[str(img_data["bucket_id"]) + img_data["image_hash"]] = img_data
+        
+        response_data = []
+        bulk_operations = []
+        for i, score in enumerate(initial_scores_to_add):
+            additional_data = additional_image_data_map.get(str(score["bucket_id"]) + score["image_hash"])
+            if additional_data != None:
+                score["dataset_id"] = additional_data.get("dataset_id")
+                score["image_uuid"] = additional_data.get("uuid")
+                response_data.append(score)
+
+                update_operation = UpdateOne(
+                    initial_queries_for_adding[i],
+                    {"$set": score},
+                    upsert=True
+                )
+                bulk_operations.append(update_operation)
+        
+        if bulk_operations:
+            request.app.image_rank_scores_collection.bulk_write(bulk_operations)
+
+        ScoreHelpers.clean_rank_score_list_for_api_response(response_data)
+
+        return api_response_handler.create_success_response_v1(
+            response_data=response_data,
+            http_status_code=200  
+        )
+
+    except Exception as e:
+        return api_response_handler.create_error_response_v1(
+            error_code=ErrorCode.OTHER_ERROR, 
+            error_string=str(e),
+            http_status_code=500
+        )
+
+
+@router.post("/image-scores/scores/set-rank-score-batch-v1", 
+             status_code=200,
+             response_model=StandardSuccessResponseV1[ListRankingScore],
+             description="Set rank image scores in a batch",
+             tags=["image scores"], 
+             responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
+async def set_image_rank_score_batch(
+    request: Request, 
+    batch_scores: RankingScoreListForBatchInsertion
+):
+    api_response_handler = await ApiResponseHandlerV1.createInstance(request)
+
+    try:
+        bulk_operations = []
+        response_data = []
+
+        for ranking_score in batch_scores.scores:
+            try:
+                image_uuid = Uuid64.from_formatted_string(ranking_score.image_uuid)
+            except Exception as e:
+                continue
+
+            query = {
+                "uuid": ranking_score.uuid,
+                "rank_model_id": ranking_score.rank_model_id    
+            }
+
+            new_score_data = {
+                "uuid": ranking_score.uuid,
+                "rank_model_id": ranking_score.rank_model_id,
+                "rank_id": ranking_score.rank_id,
+                "score": ranking_score.score,
+                "sigma_score": ranking_score.sigma_score,
+                "image_hash": ranking_score.image_hash,
+                "creation_time": datetime.utcnow().isoformat(),
+                "image_source": ranking_score.image_source,
+                "image_uuid": image_uuid.to_mongo_value(),
+                "bucket_id": ranking_score.bucket_id,
+                "dataset_id": ranking_score.dataset_id,
             }
 
             update_operation = UpdateOne(
@@ -194,8 +320,10 @@ async def set_image_rank_score_batch(
         if bulk_operations:
             request.app.image_rank_scores_collection.bulk_write(bulk_operations)
 
+        ScoreHelpers.clean_rank_score_list_for_api_response(response_data)
+
         return api_response_handler.create_success_response_v1(
-            response_data=response_data,
+            response_data={"scores": response_data},
             http_status_code=200  
         )
     
@@ -239,8 +367,7 @@ def get_image_rank_score_by_hash(
             http_status_code=404
         )
 
-    # Remove the auto generated '_id' field before returning
-    item.pop('_id', None)
+    ScoreHelpers.clean_rank_score_for_api_response(item)
 
     # Return a standardized success response
     return api_response_handler.create_success_response_v1(
@@ -258,11 +385,8 @@ def get_image_rank_scores_by_rank_model_id(request: Request, rank_model_id: int)
     if items is None:
         return []
     
-    score_data = []
-    for item in items:
-        # remove the auto generated field
-        item.pop('_id', None)
-        score_data.append(item)
+    score_data = list(items)
+    ScoreHelpers.clean_rank_score_list_for_api_response(score_data)
 
     return score_data
 
@@ -286,11 +410,8 @@ def get_image_rank_scores_by_model_id(
 
     items = list(request.app.image_rank_scores_collection.find(query).sort("score", -1))
     
-    score_data = []
-    for item in items:
-        # Remove the auto generated '_id' field
-        item.pop('_id', None)
-        score_data.append(item)
+    score_data = list(items)
+    ScoreHelpers.clean_rank_score_list_for_api_response(score_data)
     
     # Return a standardized success response with the score data
     return api_response_handler.create_success_response_v1(
@@ -365,12 +486,8 @@ def list_rank_scores(
                 .sort(score_field, 1 if sort_order == 'asc' else -1)\
                 .skip(offset).limit(limit))
         
-        # Remove the auto generated '_id' field and prepare the score data
-        score_data = []
-        for item in items:
-            # Remove the auto generated '_id' field
-            item.pop('_id', None)
-            score_data.append(item)
+        score_data = list(items)
+        ScoreHelpers.clean_rank_score_list_for_api_response(score_data)
         
         # Return a standardized success response with the score data
         return api_response_handler.create_success_response_v1(
