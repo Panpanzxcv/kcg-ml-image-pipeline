@@ -1302,7 +1302,7 @@ async def get_extract_image_count(request: Request):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
     try:
         # Count documents where image_hash exists in the extracts collection
-        count = await request.app.extracts_collection.count_documents({
+        count = request.app.extracts_collection.count_documents({
             "image_hash": {"$exists": True}
         })
 

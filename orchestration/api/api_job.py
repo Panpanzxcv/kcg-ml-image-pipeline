@@ -2139,7 +2139,7 @@ async def get_completed_job_count(request: Request):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
     try:
         # Query to count documents where task_output_file_dict.output_file_hash and task_input_dict.dataset exist
-        count = await request.app.completed_jobs_collection.count_documents({
+        count = request.app.completed_jobs_collection.count_documents({
             "task_output_file_dict.output_file_hash": {"$exists": True},
             "task_input_dict.dataset": {"$exists": True}
         })

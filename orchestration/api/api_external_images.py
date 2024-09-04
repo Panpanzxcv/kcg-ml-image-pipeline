@@ -1614,7 +1614,7 @@ async def get_external_image_count(request: Request):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
     try:
         # Count documents where image_hash exists in the external_images collection
-        count = await request.app.external_images_collection.count_documents({
+        count = request.app.external_images_collection.count_documents({
             "image_hash": {"$exists": True}
         })
 
