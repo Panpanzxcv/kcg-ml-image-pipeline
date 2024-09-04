@@ -1291,3 +1291,29 @@ def get_random_image_date_range(
     ExtractsHelpers.clean_extract_list_for_api_response(documents)
 
     return documents
+
+
+@router.get("/extract-images/get-extract-image-count", 
+            description="Returns the count of extract images where image_hash exists",
+            tags=["extract-images"],
+            response_model=StandardSuccessResponseV1[int],  
+            responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
+async def get_extract_image_count(request: Request, image_hash_list: List[str]):
+    api_response_handler = await ApiResponseHandlerV1.createInstance(request)
+    try:
+        # Use MongoDB's $in operator to count documents where image_hash exists
+        count = await request.app.extracts_collection.count_documents({
+            "image_hash": {"$in": image_hash_list}
+        })
+
+        return api_response_handler.create_success_response_v1(
+            response_data={"count": count},
+            http_status_code=200  
+        )
+    
+    except Exception as e:
+        return api_response_handler.create_error_response_v1(
+            error_code=ErrorCode.OTHER_ERROR, 
+            error_string=str(e),
+            http_status_code=500
+        )

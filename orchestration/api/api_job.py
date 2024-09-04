@@ -2128,3 +2128,30 @@ async def get_jobs_by_image_hashes(request: Request, image_hashes: List[str] = Q
 
     # Return the data found in the success response
     return response_handler.create_success_response_v1(response_data={'images': jobs}, http_status_code=200)
+
+
+@router.get("/get-completed-job-count", 
+            description="Returns the count of completed jobs where output_file_hash and dataset exist",
+            tags=["completed-jobs"],
+            response_model=StandardSuccessResponseV1[int],  
+            responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
+async def get_completed_job_count(request: Request):
+    api_response_handler = await ApiResponseHandlerV1.createInstance(request)
+    try:
+        # Query to count documents where task_output_file_dict.output_file_hash and task_input_dict.dataset exist
+        count = await request.app.completed_jobs_collection.count_documents({
+            "task_output_file_dict.output_file_hash": {"$exists": True},
+            "task_input_dict.dataset": {"$exists": True}
+        })
+
+        return api_response_handler.create_success_response_v1(
+            response_data={"count": count},
+            http_status_code=200  
+        )
+    
+    except Exception as e:
+        return api_response_handler.create_error_response_v1(
+            error_code=ErrorCode.OTHER_ERROR, 
+            error_string=str(e),
+            http_status_code=500
+        )
