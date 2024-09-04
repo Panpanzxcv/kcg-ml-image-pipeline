@@ -89,16 +89,11 @@ def get_all_existing_hashes(db):
     ]:
         print(f"Fetching hashes from {collection_name}...")
 
-        # For 'completed-jobs', filter documents where 'task_input_dict.dataset' exists
-        if collection_name == "completed-jobs":
-            query = {"task_input_dict.dataset": {"$exists": True}}
-        else:
-            query = {}
-
         # Initialize a counter for documents in the collection
         doc_count = 0
 
-        cursor = db[collection_name].find(query, {hash_key: 1}).batch_size(1000)
+        # Fetch all documents based on hash_key
+        cursor = db[collection_name].find({}, {hash_key: 1}).batch_size(1000)
         
         for doc in cursor:
             hash_value = doc.get(hash_key)
@@ -118,6 +113,8 @@ def get_all_existing_hashes(db):
     all_existing_hashes = completed_jobs_hashes.union(extracts_hashes).union(external_images_hashes)
     print(f"Total combined hashes: {len(all_existing_hashes)}")
     return all_existing_hashes
+
+
 
 
 def main():
