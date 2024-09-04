@@ -216,7 +216,7 @@ def remove_rank(request: Request, rank_model_id: int):
     response_handler = ApiResponseHandlerV1(request)
 
     # Check if there is a rank model associated with this rank_model_id
-    rank_model_exists = request.app.rank_collection.find_one({"rank_model_id": rank_model_id})
+    rank_model_exists = request.app.ranking_models_collection.find_one({"rank_model_id": rank_model_id})
     if rank_model_exists:
         return response_handler.create_error_response_v1(
             error_code=ErrorCode.INVALID_PARAMS,
@@ -234,7 +234,7 @@ def remove_rank(request: Request, rank_model_id: int):
         )
 
     # Check if there is an active learning queue associated with this rank_model_id
-    active_learning_queue_exists = request.app.active_learning_queue_collection.find_one({"rank_model_id": rank_model_id})
+    active_learning_queue_exists = request.app.rank_active_learning_pairs_collection.find_one({"rank_model_id": rank_model_id})
     if active_learning_queue_exists:
         return response_handler.create_error_response_v1(
             error_code=ErrorCode.INVALID_PARAMS,

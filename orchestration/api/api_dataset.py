@@ -929,15 +929,6 @@ async def remove_dataset_v1(request: Request, dataset_id: int = Query(...)):
             http_status_code=422
         )
 
-    # Check if the dataset ID exists in the jobs collection associated with the bucket
-    job_exists = request.app.jobs_collection.find_one({"dataset_id": dataset_id})
-    if job_exists:
-        return response_handler.create_error_response_v1(
-            error_code=422,
-            error_string="Dataset is assigned to jobs in the jobs_collection.",
-            http_status_code=422
-        )
-
     # Attempt to delete the dataset
     dataset_result = request.app.datasets_collection.delete_one({"dataset_id": dataset_id})
     # Attempt to delete the dataset configuration
