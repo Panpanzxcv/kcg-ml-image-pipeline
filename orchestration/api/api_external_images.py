@@ -1610,12 +1610,12 @@ def get_random_image_date_range(
             tags=["external-images"],
             response_model=StandardSuccessResponseV1[int],  
             responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
-async def get_external_image_count(request: Request, image_hash_list: List[str]):
+async def get_external_image_count(request: Request):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
     try:
-        # Use MongoDB's $in operator to count documents where image_hash exists
+        # Count documents where image_hash exists in the external_images collection
         count = await request.app.external_images_collection.count_documents({
-            "image_hash": {"$in": image_hash_list}
+            "image_hash": {"$exists": True}
         })
 
         return api_response_handler.create_success_response_v1(
