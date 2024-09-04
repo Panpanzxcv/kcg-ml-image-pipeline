@@ -74,14 +74,26 @@ async def list_buckets(request: Request):
 async def remove_bucket(request: Request, bucket_id: int = Query(...)):
     response_handler = await ApiResponseHandlerV1.createInstance(request)
 
+    # Prevent the deletion of the first 3 buckets
     if 0 <= bucket_id < 3:
         return response_handler.create_error_response_v1(
             error_code=ErrorCode.INVALID_PARAMS,
-            error_string='The first 3 buckets can not be removed.',
+            error_string='The first 3 buckets cannot be removed.',
             http_status_code=403
+        )
+
+    # Check if the bucket is referenced in any entry in the all_image_collection
+    bucket_in_use = request.app.all_image_collection.find_one({"bucket_id": bucket_id})
+    if bucket_in_use:
+        return response_handler.create_error_response_v1(
+            error_code=ErrorCode.INVALID_PARAMS,
+            error_string=f"Bucket with ID {bucket_id} is in use and cannot be removed.",
+            http_status_code=400
         )
 
     # Attempt to delete the bucket
     bucket_result = request.app.buckets_collection.delete_one({"bucket_id": bucket_id})
+
     # Return a standard response with wasPresent set to true if there was a deletion
     return response_handler.create_success_delete_response_v1(bucket_result.deleted_count != 0)
+

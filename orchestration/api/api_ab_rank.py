@@ -208,17 +208,46 @@ async def update_rank_model_in_image_pairs(
 
 @router.delete("/ab-rank/remove-rank-model/{rank_model_id}",
                response_model=StandardSuccessResponseV1[WasPresentResponse], 
-               description="remove rank with rank_model_id", 
+               description="Remove rank with rank_model_id", 
                tags=["ab-rank"], 
                status_code=200,
                responses=ApiResponseHandlerV1.listErrors([400, 422, 500]))
-def remove_rank(request: Request, rank_model_id: int ):
+def remove_rank(request: Request, rank_model_id: int):
     response_handler = ApiResponseHandlerV1(request)
 
+    # Check if there is a rank model associated with this rank_model_id
+    rank_model_exists = request.app.rank_collection.find_one({"rank_model_id": rank_model_id})
+    if rank_model_exists:
+        return response_handler.create_error_response_v1(
+            error_code=ErrorCode.INVALID_PARAMS,
+            error_string=f"Cannot delete rank model with ID {rank_model_id} because it is associated with an existing rank model.",
+            http_status_code=400
+        )
+
+    # Check if there is a selection associated with this rank_model_id
+    selection_exists = request.app.ranking_datapoints_collection.find_one({"rank_model_id": rank_model_id})
+    if selection_exists:
+        return response_handler.create_error_response_v1(
+            error_code=ErrorCode.INVALID_PARAMS,
+            error_string=f"Cannot delete rank model with ID {rank_model_id} because it is associated with an existing selection.",
+            http_status_code=400
+        )
+
+    # Check if there is an active learning queue associated with this rank_model_id
+    active_learning_queue_exists = request.app.active_learning_queue_collection.find_one({"rank_model_id": rank_model_id})
+    if active_learning_queue_exists:
+        return response_handler.create_error_response_v1(
+            error_code=ErrorCode.INVALID_PARAMS,
+            error_string=f"Cannot delete rank model with ID {rank_model_id} because it is associated with an active learning queue.",
+            http_status_code=400
+        )
+
+    # If no dependencies exist, proceed to delete the rank model
     result = request.app.rank_collection.delete_one({"rank_model_id": rank_model_id})
 
     # Return a standard response with wasPresent set to true if there was a deletion
     return response_handler.create_success_delete_response_v1(result.deleted_count != 0)
+
 
 
 @router.get("/ab-rank/list-rank-models",

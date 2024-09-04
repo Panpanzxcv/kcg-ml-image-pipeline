@@ -15,7 +15,7 @@ def process_collection(collection_name, minio_client, db, hash_field, all_existi
     total_docs = collection.count_documents({})
     print(f"Total documents in {collection_name}: {total_docs}")
     
-    cursor = collection.find({}, {hash_field: 1}).batch_size(1000)
+    cursor = collection.find({}, {hash_field: 1})
     processed_docs = 0
     
     for doc in cursor:
@@ -25,7 +25,6 @@ def process_collection(collection_name, minio_client, db, hash_field, all_existi
             print(f"Document with _id: {doc['_id']} skipped due to missing {hash_field}")
             continue
         
-        print(f"Checking document with _id: {doc['_id']} and {hash_field}: {doc_hash}")
 
         # Check if the hash exists in the precompiled set of all existing hashes
         if doc_hash not in all_existing_hashes:
@@ -89,7 +88,15 @@ def get_all_existing_hashes(db):
         ("external_images", "image_hash"),
     ]:
         print(f"Fetching hashes from {collection_name}...")
-        cursor = db[collection_name].find({}, {hash_key: 1}).batch_size(1000)
+
+        # For 'completed-jobs', filter documents where 'task_input_dict.dataset' exists
+        if collection_name == "completed-jobs":
+            query = {"task_input_dict.dataset": {"$exists": True}}
+        else:
+            query = {}
+
+        cursor = db[collection_name].find(query, {hash_key: 1}).batch_size(1000)
+        
         for doc in cursor:
             hash_value = doc.get(hash_key)
             if hash_value:
@@ -100,6 +107,7 @@ def get_all_existing_hashes(db):
                 elif collection_name == "external_images":
                     external_images_hashes.add(hash_value)
 
+    # Combine all the collected hashes into one set
     all_existing_hashes = completed_jobs_hashes.union(extracts_hashes).union(external_images_hashes)
     print(f"Total combined hashes: {len(all_existing_hashes)}")
     return all_existing_hashes
