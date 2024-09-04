@@ -95,11 +95,15 @@ def get_all_existing_hashes(db):
         else:
             query = {}
 
+        # Initialize a counter for documents in the collection
+        doc_count = 0
+
         cursor = db[collection_name].find(query, {hash_key: 1}).batch_size(1000)
         
         for doc in cursor:
             hash_value = doc.get(hash_key)
             if hash_value:
+                doc_count += 1
                 if collection_name == "completed-jobs":
                     completed_jobs_hashes.add(hash_value)
                 elif collection_name == "extracts":
@@ -107,10 +111,14 @@ def get_all_existing_hashes(db):
                 elif collection_name == "external_images":
                     external_images_hashes.add(hash_value)
 
+        # Print the number of documents fetched from the current collection
+        print(f"Total documents fetched from {collection_name}: {doc_count}")
+
     # Combine all the collected hashes into one set
     all_existing_hashes = completed_jobs_hashes.union(extracts_hashes).union(external_images_hashes)
     print(f"Total combined hashes: {len(all_existing_hashes)}")
     return all_existing_hashes
+
 
 def main():
     client = MongoClient("mongodb://192.168.3.1:32017/")
