@@ -372,7 +372,7 @@ class ListImageHash(BaseModel):
 class ListImageHashRequest(BaseModel):
     image_hash_list: List[str]    
 
-class ClassifierScoreV1(BaseModel):
+class ClassifierScoreV2(BaseModel):
     uuid: Union[str, None]
     task_type: str
     classifier_id: int
@@ -393,6 +393,26 @@ class ClassifierScoreV1(BaseModel):
             "creation_time" : self.creation_time,
             "image_uuid": self.image_uuid
         }
+    
+class ClassifierScoreV1(BaseModel):
+    uuid: Union[str, None]
+    task_type: str
+    classifier_id: int
+    image_hash: str
+    tag_id: int
+    score: float
+    creation_time: Union[str, None] = None
+
+    def to_dict(self):
+        return {
+            "uuid": self.uuid,
+            "task_type": self.task_type,
+            "classifier_id": self.classifier_id,
+            "image_hash": self.image_hash,
+            "tag_id": self.tag_id,
+            "score": self.score,
+            "creation_time" : self.creation_time,
+        }    
 
 class ImageResolution(BaseModel):
     width: int
@@ -564,9 +584,14 @@ class ListClassifierScore1(BaseModel):
 class ListClassifierScore2(BaseModel):
     scores: List[ClassifierScoreV1]
 
+class ListClassifierScoreWithImageUUID(BaseModel):
+    scores: List[ClassifierScoreV2] 
+
 class ListClassifierScore4(RootModel[List[ClassifierScoreV1]]):
     pass
 
+class ListClassifierScore5(RootModel[List[ClassifierScoreV2]]):
+    pass
 
 class ListClassifierScore3(BaseModel):
     data: List[ClassifierScoreV1]

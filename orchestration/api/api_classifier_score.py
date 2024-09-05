@@ -1,6 +1,6 @@
 from fastapi import Request, APIRouter, Query
 from .api_utils import PrettyJSONResponse, ErrorCode, WasPresentResponse, ApiResponseHandlerV1, StandardSuccessResponseV1, CountResponse
-from orchestration.api.mongo_schemas import ClassifierScore, ListClassifierScore, ClassifierScoreRequest, ClassifierScoreV1, ListClassifierScore1, ListClassifierScore2, ListClassifierScore3, BatchClassifierScoreRequest, ListClassifierScore4, BatchClassifierScoreRequestV1
+from orchestration.api.mongo_schemas import ClassifierScore, ListClassifierScore, ClassifierScoreRequest, ClassifierScoreV1, ListClassifierScore1, ListClassifierScore2, ListClassifierScore3, BatchClassifierScoreRequest, ListClassifierScore4, BatchClassifierScoreRequestV1, ListClassifierScore5, ListClassifierScoreWithImageUUID
 from fastapi.encoders import jsonable_encoder
 import uuid
 from typing import Optional
@@ -1142,7 +1142,7 @@ async def set_image_classifier_score_v2(
     
 @router.post("/pseudotag-classifier-scores/set-image-classifier-score-v3", 
              status_code=200,
-             response_model=StandardSuccessResponseV1[ListClassifierScore4],
+             response_model=StandardSuccessResponseV1[ListClassifierScore5],
              description="Set classifier image scores in batch",
              tags=["pseudotag-classifier-scores"], 
              responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
@@ -1258,7 +1258,7 @@ async def set_image_classifier_score_bulk(
 
 @router.post("/pseudotag-classifier-scores/set-image-classifier-scores-in-bulk-v1", 
              status_code=200,
-             response_model=StandardSuccessResponseV1[ListClassifierScore2],
+             response_model=StandardSuccessResponseV1[ListClassifierScoreWithImageUUID],
              description="Set classifier image scores in batch",
              tags=["pseudotag-classifier-scores"], 
              responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
