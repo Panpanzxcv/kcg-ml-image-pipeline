@@ -1,6 +1,6 @@
 from fastapi import Request, APIRouter, Query
 from .api_utils import PrettyJSONResponse, ErrorCode, WasPresentResponse, ApiResponseHandlerV1, StandardSuccessResponseV1, CountResponse
-from orchestration.api.mongo_schemas import ClassifierScore, ListClassifierScore, ClassifierScoreRequest, ClassifierScoreV1, ListClassifierScore1, ListClassifierScore2, ListClassifierScore3, BatchClassifierScoreRequest, ListClassifierScore4
+from orchestration.api.mongo_schemas import ClassifierScore, ListClassifierScore, ClassifierScoreRequest, ClassifierScoreV1, ListClassifierScore1, ListClassifierScore2, ListClassifierScore3, BatchClassifierScoreRequest, ListClassifierScore4, BatchClassifierScoreRequestV1
 from fastapi.encoders import jsonable_encoder
 import uuid
 from typing import Optional
@@ -1103,6 +1103,63 @@ async def set_image_classifier_score_v2(
             query = {
                 "classifier_id": classifier_score.classifier_id,
                 "uuid": classifier_score.job_uuid,
+                "image_source": classifier_score.image_source
+            }
+
+            new_score_data = {
+                "uuid": classifier_score.job_uuid,
+                "classifier_id": classifier_score.classifier_id,
+                "tag_id": classifier_score.tag_id,
+                "score": classifier_score.score,
+                "image_hash": classifier_score.image_hash,
+                "creation_time": datetime.utcnow().isoformat(),
+                "image_source": classifier_score.image_source
+            }
+
+            update_operation = UpdateOne(
+                query,
+                {"$set": new_score_data},
+                upsert=True
+            )
+            bulk_operations.append(update_operation)
+            response_data.append(new_score_data)
+
+        if bulk_operations:
+            request.app.image_classifier_scores_collection.bulk_write(bulk_operations)
+
+        return api_response_handler.create_success_response_v1(
+            response_data=response_data,
+            http_status_code=200  
+        )
+    
+    except Exception as e:
+        return api_response_handler.create_error_response_v1(
+            error_code=ErrorCode.OTHER_ERROR, 
+            error_string=str(e),
+            http_status_code=500
+        )
+    
+    
+@router.post("/pseudotag-classifier-scores/set-image-classifier-score-v3", 
+             status_code=200,
+             response_model=StandardSuccessResponseV1[ListClassifierScore4],
+             description="Set classifier image scores in batch",
+             tags=["pseudotag-classifier-scores"], 
+             responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
+async def set_image_classifier_score_v3(
+    request: Request, 
+    batch_scores: BatchClassifierScoreRequestV1
+):
+    api_response_handler = await ApiResponseHandlerV1.createInstance(request)
+
+    try:
+        bulk_operations = []
+        response_data = []
+
+        for classifier_score in batch_scores.scores:
+            query = {
+                "classifier_id": classifier_score.classifier_id,
+                "uuid": classifier_score.job_uuid,
                 "image_source": classifier_score.image_source,
                 "image_uuid": classifier_score.image_uuid
             }
@@ -1139,7 +1196,7 @@ async def set_image_classifier_score_v2(
             error_code=ErrorCode.OTHER_ERROR, 
             error_string=str(e),
             http_status_code=500
-        )
+        )            
     
 
 @router.post("/pseudotag-classifier-scores/set-image-classifier-scores-in-bulk", 
@@ -1151,6 +1208,63 @@ async def set_image_classifier_score_v2(
 async def set_image_classifier_score_bulk(
     request: Request, 
     batch_scores: BatchClassifierScoreRequest
+):
+    api_response_handler = await ApiResponseHandlerV1.createInstance(request)
+
+    try:
+        bulk_operations = []
+        response_data = []
+
+        for classifier_score in batch_scores.scores:
+            query = {
+                "classifier_id": classifier_score.classifier_id,
+                "uuid": classifier_score.job_uuid,
+                "image_source": classifier_score.image_source
+            }
+
+            new_score_data = {
+                "uuid": classifier_score.job_uuid,
+                "classifier_id": classifier_score.classifier_id,
+                "tag_id": classifier_score.tag_id,
+                "score": classifier_score.score,
+                "image_hash": classifier_score.image_hash,
+                "creation_time": datetime.utcnow().isoformat(),
+                "image_source": classifier_score.image_source
+            }
+
+            update_operation = UpdateOne(
+                query,
+                {"$set": new_score_data},
+                upsert=True
+            )
+            bulk_operations.append(update_operation)
+            response_data.append(new_score_data)
+
+        if bulk_operations:
+            request.app.image_classifier_scores_collection.bulk_write(bulk_operations)
+
+        return api_response_handler.create_success_response_v1(
+            response_data={"scores": response_data},
+            http_status_code=200  
+        )
+    
+    except Exception as e:
+        return api_response_handler.create_error_response_v1(
+            error_code=ErrorCode.OTHER_ERROR, 
+            error_string=str(e),
+            http_status_code=500
+        )    
+    
+
+@router.post("/pseudotag-classifier-scores/set-image-classifier-scores-in-bulk-v1", 
+             status_code=200,
+             response_model=StandardSuccessResponseV1[ListClassifierScore2],
+             description="Set classifier image scores in batch",
+             tags=["pseudotag-classifier-scores"], 
+             responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
+async def set_image_classifier_score_bulk_V1(
+    request: Request, 
+    batch_scores: BatchClassifierScoreRequestV1
 ):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
 
@@ -1198,7 +1312,10 @@ async def set_image_classifier_score_bulk(
             error_code=ErrorCode.OTHER_ERROR, 
             error_string=str(e),
             http_status_code=500
-        )    
+        )  
+
+
+
 
 
 @router.post("/pseudotag-classifier-scores/set-image-classifier-score-list-v1", 
