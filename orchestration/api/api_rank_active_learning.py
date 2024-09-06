@@ -389,7 +389,8 @@ async def random_queue_pair(request: Request, rank_model_id: Optional[int] = Non
 
 @router.post("/rank-training/add-ranking-data-point", 
              status_code=201,
-             tags=['rank-training'],
+             description="changed with /rank-training/add-ranking-data-point-v1",
+             tags=['deprecated3'],
              response_model=StandardSuccessResponseV1[ResponseRankSelection],
              responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
 async def add_datapoints(request: Request, selection: RankSelection, image_source: str = Query(..., description="Image source to filter by", regex="^(generated_image|external_image|extract_image)$")):

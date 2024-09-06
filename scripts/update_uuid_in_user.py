@@ -3,8 +3,8 @@ from orchestration.api.utils.uuid64 import Uuid64
 
 # Initialize the MongoDB client and the users collection
 client = MongoClient('mongodb://192.168.3.1:32017/')
-db = client['orchestration-job-db']  # Replace with your database name
-users_collection = db['users']  # Replace with your actual users collection name
+db = client['orchestration-job-db']  
+users_collection = db['users']  
 
 def update_all_users_with_uuid():
     # Find all users in the collection
