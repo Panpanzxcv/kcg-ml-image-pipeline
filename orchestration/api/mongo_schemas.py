@@ -298,6 +298,33 @@ class RankingScore(BaseModel):
             "sigma_score": self.sigma_score
         }
 
+class OldRankingScoreForBatchInsertion(BaseModel):
+    rank_model_id: int
+    rank_id: int
+    uuid: str
+    image_hash: str
+    score: float    
+    sigma_score: float
+    image_source: str
+
+class OldRankingScoreListForBatchInsertion(BaseModel):
+    scores: List[OldRankingScoreForBatchInsertion]  
+
+class RankingScoreForBatchInsertion(BaseModel):
+    rank_model_id: int
+    rank_id: int
+    uuid: str
+    image_hash: str
+    score: float    
+    sigma_score: float
+    image_source: str
+    image_uuid: str
+    bucket_id: int
+    dataset_id: int
+
+class RankingScoreListForBatchInsertion(BaseModel):
+    scores: List[RankingScoreForBatchInsertion]  
+
 class ResponseRankingScore(BaseModel):
     rank_model_id: int
     rank_id: int

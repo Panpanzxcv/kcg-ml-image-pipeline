@@ -927,3 +927,13 @@ def get_bucket_id(image_source):
         return 2
     else:
         return None
+
+def get_bucket_id_for_image_source(image_source: str) -> int:
+    if image_source == 'generated_image':
+        return 0
+    elif image_source == 'extract_image':
+        return 1
+    elif image_source == 'external_image':
+        return 2
+    else:
+        raise ValueError("Invalid image_source value")
