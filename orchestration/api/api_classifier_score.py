@@ -1,4 +1,4 @@
-from fastapi import Request, APIRouter, Query
+from fastapi import Request, APIRouter, Query, HTTPException
 from .api_utils import PrettyJSONResponse, ErrorCode, WasPresentResponse, ApiResponseHandlerV1, StandardSuccessResponseV1, CountResponse
 from orchestration.api.mongo_schemas import ClassifierScore, ListClassifierScore, ClassifierScoreRequest, ClassifierScoreV1, ListClassifierScore1, ListClassifierScore2, ListClassifierScore3, BatchClassifierScoreRequest, ListClassifierScore4, BatchClassifierScoreRequestV1, ListClassifierScore5, ListClassifierScoreWithImageUUID
 from fastapi.encoders import jsonable_encoder
@@ -1148,7 +1148,7 @@ async def set_image_classifier_score_v2(
              responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
 async def set_image_classifier_score_v3(
     request: Request, 
-    batch_scores: BatchClassifierScoreRequestV1
+    batch_scores: BatchClassifierScoreRequest
 ):
     api_response_handler = await ApiResponseHandlerV1.createInstance(request)
 
@@ -1157,6 +1157,20 @@ async def set_image_classifier_score_v3(
         response_data = []
 
         for classifier_score in batch_scores.scores:
+            # Always fetch image_uuid from completed_jobs_collection
+            image_data = request.app.completed_jobs_collection.find_one(
+                {"uuid": classifier_score.job_uuid},
+                {"image_uuid": 1}
+            )
+            
+            if not image_data or not image_data.get("image_uuid"):
+                raise HTTPException(
+                    status_code=404, 
+                    detail=f"Image with the given job_uuid {classifier_score.job_uuid} not found in completed jobs collection."
+                )
+            
+            classifier_score.image_uuid = image_data.get("image_uuid")
+
             query = {
                 "classifier_id": classifier_score.classifier_id,
                 "uuid": classifier_score.job_uuid,
@@ -1196,7 +1210,9 @@ async def set_image_classifier_score_v3(
             error_code=ErrorCode.OTHER_ERROR, 
             error_string=str(e),
             http_status_code=500
-        )            
+        )
+
+           
     
 
 @router.post("/pseudotag-classifier-scores/set-image-classifier-scores-in-bulk", 
