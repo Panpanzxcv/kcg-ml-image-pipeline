@@ -1220,6 +1220,75 @@ def get_tagged_images_v2(
             error_code=ErrorCode.OTHER_ERROR, error_string="Internal Server Error", http_status_code=500
         )
 
+
+@router.get("/tags/get-images-by-source-v1",
+            tags=["tags"], 
+            status_code=200,
+            description="Get images by image source and size",
+            response_model=StandardSuccessResponseV1[ListImageTag], 
+            responses=ApiResponseHandlerV1.listErrors([400, 422, 500]))
+def get_images_by_source_v2(
+    request: Request, 
+    size: int = Query(..., description="Limit the number of images to return"),
+    image_source: str = Query(..., description="Image source to filter by. Options: 'generated_image', 'extract_image', 'external_image'"),
+    start_date: str = None,
+    end_date: str = None,
+    order: str = Query("desc", description="Order in which the data should be returned. 'asc' for oldest first, 'desc' for newest first")
+):
+    response_handler = ApiResponseHandlerV1(request)
+
+    try:
+        # Validate start_date and end_date
+        validated_start_date = validate_date_format(start_date)
+        validated_end_date = validate_date_format(end_date)
+        if (validated_start_date is None and start_date) or (validated_end_date is None and end_date):
+            return response_handler.create_error_response_v1(
+                error_code=ErrorCode.INVALID_PARAMS, 
+                error_string="Invalid start_date or end_date format. Expected format: YYYY-MM-DDTHH:MM:SS", 
+                http_status_code=400,
+            )
+        
+        # Build the query
+        query = {"image_source": image_source}
+        date_range_query = build_date_query(date_from=validated_start_date, date_to=validated_end_date)
+        query.update(date_range_query)
+        
+        # Decide the sort order
+        sort_order_mapping = {"desc": -1, "asc": 1}
+        sort_order = sort_order_mapping.get(order, -1)  # Default to "desc"
+        
+        # Execute the query
+        image_tags_cursor = request.app.image_tags_collection\
+                                            .find(query)\
+                                            .sort("creation_time", sort_order)\
+                                            .limit(size)
+        
+        # Process the results
+        image_info_list = []
+        for tag_data in image_tags_cursor:
+            if "image_hash" in tag_data and "user_who_created" in tag_data and "file_path" in tag_data:
+                image_tag = ImageTag(
+                    file_path=tag_data["file_path"], 
+                    image_hash=str(tag_data["image_hash"]),
+                    tag_type=int(tag_data["tag_type"]),
+                    user_who_created=tag_data["user_who_created"],
+                    creation_time=tag_data.get("creation_time", None)
+                )
+                image_info_list.append(image_tag.model_dump())  # Convert to dictionary
+        
+        # Return the list of images in a standard success response
+        return response_handler.create_success_response_v1(
+            response_data={"images": image_info_list}, 
+            http_status_code=200,
+        )
+
+    except Exception as e:
+        print(e)
+        # Log the exception details here, if necessary
+        return response_handler.create_error_response_v1(
+            error_code=ErrorCode.OTHER_ERROR, error_string="Internal Server Error", http_status_code=500
+        )
+
     
         
 @router.get("/tags/get-images-by-image-type",
