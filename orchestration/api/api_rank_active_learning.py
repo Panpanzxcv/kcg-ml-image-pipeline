@@ -408,16 +408,8 @@ async def add_datapoints(request: Request, selection: RankSelection, image_sourc
                 http_status_code=404
             )
 
-        policy = None
-        if selection.rank_active_learning_policy_id:
-            policy = request.app.rank_active_learning_policies_collection.find_one(
-                {"rank_active_learning_policy_id": selection.rank_active_learning_policy_id}
-            )
-
         current_time = datetime.utcnow().strftime('%Y-%m-%d-%H-%M-%S')
         file_name = f"{current_time}-{selection.username}.json"
-        dataset = selection.image_1_metadata.file_path.split('/')[1]
-        rank_model_string = rank.get("rank_model_string", None)
 
         dict_data = selection.to_dict()
         dict_data['image_1_metadata']['image_source'] = image_source
@@ -539,11 +531,6 @@ async def add_datapoints_v1(request: Request, selection: RankSelectionV1):
                 http_status_code=404
             )
 
-        policy = None
-        if selection.rank_active_learning_policy_id:
-            policy = request.app.rank_active_learning_policies_collection.find_one(
-                {"rank_active_learning_policy_id": selection.rank_active_learning_policy_id}
-            )
 
         current_time = datetime.utcnow().strftime('%Y-%m-%d-%H-%M-%S')
         file_name = f"{current_time}-{selection.username}.json"

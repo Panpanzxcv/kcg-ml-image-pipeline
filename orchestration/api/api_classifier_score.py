@@ -7,6 +7,7 @@ from typing import Optional
 from datetime import datetime
 from pymongo import UpdateOne
 import time
+from orchestration.api.utils.uuid64 import Uuid64
 from typing import List
 
 
@@ -1103,7 +1104,7 @@ async def set_image_classifier_score_v2(
             query = {
                 "classifier_id": classifier_score.classifier_id,
                 "uuid": classifier_score.job_uuid,
-                "image_source": classifier_score.image_source
+                "image_source": classifier_score.image_source,
             }
 
             new_score_data = {
@@ -1113,7 +1114,8 @@ async def set_image_classifier_score_v2(
                 "score": classifier_score.score,
                 "image_hash": classifier_score.image_hash,
                 "creation_time": datetime.utcnow().isoformat(),
-                "image_source": classifier_score.image_source
+                "image_source": classifier_score.image_source,
+                "image_uuid": Uuid64.from_formatted_string(classifier_score.image_uuid).to_mongo_value()
             }
 
             update_operation = UpdateOne(
@@ -1138,81 +1140,7 @@ async def set_image_classifier_score_v2(
             error_string=str(e),
             http_status_code=500
         )
-    
-    
-@router.post("/pseudotag-classifier-scores/set-image-classifier-score-v3", 
-             status_code=200,
-             response_model=StandardSuccessResponseV1[ListClassifierScore5],
-             description="Set classifier image scores in batch",
-             tags=["pseudotag-classifier-scores"], 
-             responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
-async def set_image_classifier_score_v3(
-    request: Request, 
-    batch_scores: BatchClassifierScoreRequest
-):
-    api_response_handler = await ApiResponseHandlerV1.createInstance(request)
-
-    try:
-        bulk_operations = []
-        response_data = []
-
-        for classifier_score in batch_scores.scores:
-            # Always fetch image_uuid from completed_jobs_collection
-            image_data = request.app.completed_jobs_collection.find_one(
-                {"uuid": classifier_score.job_uuid},
-                {"image_uuid": 1}
-            )
-            
-            if not image_data or not image_data.get("image_uuid"):
-                raise HTTPException(
-                    status_code=404, 
-                    detail=f"Image with the given job_uuid {classifier_score.job_uuid} not found in completed jobs collection."
-                )
-            
-            classifier_score.image_uuid = image_data.get("image_uuid")
-
-            query = {
-                "classifier_id": classifier_score.classifier_id,
-                "uuid": classifier_score.job_uuid,
-                "image_source": classifier_score.image_source,
-                "image_uuid": classifier_score.image_uuid
-            }
-
-            new_score_data = {
-                "uuid": classifier_score.job_uuid,
-                "classifier_id": classifier_score.classifier_id,
-                "tag_id": classifier_score.tag_id,
-                "score": classifier_score.score,
-                "image_hash": classifier_score.image_hash,
-                "creation_time": datetime.utcnow().isoformat(),
-                "image_source": classifier_score.image_source,
-                "image_uuid": classifier_score.image_uuid
-            }
-
-            update_operation = UpdateOne(
-                query,
-                {"$set": new_score_data},
-                upsert=True
-            )
-            bulk_operations.append(update_operation)
-            response_data.append(new_score_data)
-
-        if bulk_operations:
-            request.app.image_classifier_scores_collection.bulk_write(bulk_operations)
-
-        return api_response_handler.create_success_response_v1(
-            response_data=response_data,
-            http_status_code=200  
-        )
-    
-    except Exception as e:
-        return api_response_handler.create_error_response_v1(
-            error_code=ErrorCode.OTHER_ERROR, 
-            error_string=str(e),
-            http_status_code=500
-        )
-
-           
+         
     
 
 @router.post("/pseudotag-classifier-scores/set-image-classifier-scores-in-bulk", 
@@ -1235,7 +1163,8 @@ async def set_image_classifier_score_bulk(
             query = {
                 "classifier_id": classifier_score.classifier_id,
                 "uuid": classifier_score.job_uuid,
-                "image_source": classifier_score.image_source
+                "image_source": classifier_score.image_source,
+                
             }
 
             new_score_data = {
@@ -1245,7 +1174,8 @@ async def set_image_classifier_score_bulk(
                 "score": classifier_score.score,
                 "image_hash": classifier_score.image_hash,
                 "creation_time": datetime.utcnow().isoformat(),
-                "image_source": classifier_score.image_source
+                "image_source": classifier_score.image_source,
+                "image_uuid": Uuid64.from_formatted_string(classifier_score.image_uuid).to_mongo_value()
             }
 
             update_operation = UpdateOne(
@@ -1270,65 +1200,6 @@ async def set_image_classifier_score_bulk(
             error_string=str(e),
             http_status_code=500
         )    
-    
-
-@router.post("/pseudotag-classifier-scores/set-image-classifier-scores-in-bulk-v1", 
-             status_code=200,
-             response_model=StandardSuccessResponseV1[ListClassifierScoreWithImageUUID],
-             description="Set classifier image scores in batch",
-             tags=["pseudotag-classifier-scores"], 
-             responses=ApiResponseHandlerV1.listErrors([404, 422, 500]))
-async def set_image_classifier_score_bulk_V1(
-    request: Request, 
-    batch_scores: BatchClassifierScoreRequestV1
-):
-    api_response_handler = await ApiResponseHandlerV1.createInstance(request)
-
-    try:
-        bulk_operations = []
-        response_data = []
-
-        for classifier_score in batch_scores.scores:
-            query = {
-                "classifier_id": classifier_score.classifier_id,
-                "uuid": classifier_score.job_uuid,
-                "image_source": classifier_score.image_source,
-                "image_uuid": classifier_score.image_uuid
-            }
-
-            new_score_data = {
-                "uuid": classifier_score.job_uuid,
-                "classifier_id": classifier_score.classifier_id,
-                "tag_id": classifier_score.tag_id,
-                "score": classifier_score.score,
-                "image_hash": classifier_score.image_hash,
-                "creation_time": datetime.utcnow().isoformat(),
-                "image_source": classifier_score.image_source,
-                "image_uuid": classifier_score.image_uuid
-            }
-
-            update_operation = UpdateOne(
-                query,
-                {"$set": new_score_data},
-                upsert=True
-            )
-            bulk_operations.append(update_operation)
-            response_data.append(new_score_data)
-
-        if bulk_operations:
-            request.app.image_classifier_scores_collection.bulk_write(bulk_operations)
-
-        return api_response_handler.create_success_response_v1(
-            response_data={"scores": response_data},
-            http_status_code=200  
-        )
-    
-    except Exception as e:
-        return api_response_handler.create_error_response_v1(
-            error_code=ErrorCode.OTHER_ERROR, 
-            error_string=str(e),
-            http_status_code=500
-        )  
 
 
 

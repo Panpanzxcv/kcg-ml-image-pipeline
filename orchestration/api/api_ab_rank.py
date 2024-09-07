@@ -216,11 +216,11 @@ def remove_rank(request: Request, rank_model_id: int):
     response_handler = ApiResponseHandlerV1(request)
 
     # Check if there is a rank model associated with this rank_model_id
-    rank_model_exists = request.app.ranking_models_collection.find_one({"rank_model_id": rank_model_id})
+    rank_model_exists = request.app.ranking_models_collection.find_one({"rank_id": rank_model_id})
     if rank_model_exists:
         return response_handler.create_error_response_v1(
             error_code=ErrorCode.INVALID_PARAMS,
-            error_string=f"Cannot delete rank model with ID {rank_model_id} because it is associated with an existing rank model.",
+            error_string=f"Cannot delete rank with ID {rank_model_id} because it is associated with an existing rank model.",
             http_status_code=400
         )
 
@@ -229,7 +229,7 @@ def remove_rank(request: Request, rank_model_id: int):
     if selection_exists:
         return response_handler.create_error_response_v1(
             error_code=ErrorCode.INVALID_PARAMS,
-            error_string=f"Cannot delete rank model with ID {rank_model_id} because it is associated with an existing selection.",
+            error_string=f"Cannot delete rank model with ID {rank_model_id} because it is associated with an existing selection datapoint.",
             http_status_code=400
         )
 

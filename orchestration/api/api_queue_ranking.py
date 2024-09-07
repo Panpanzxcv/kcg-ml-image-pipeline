@@ -11,7 +11,7 @@ import random
 router = APIRouter()
 
 
-@router.post("/ranking-queue/add-image-to-queue",  description="no replacement", tags= ['deprecated3'])
+@router.post("/ranking-queue/add-image-to-queue",  description = "The endpoint was deprecated and there is no replacement for it", tags= ['deprecated3'])
 def get_job_details(request: Request, job_uuid: str = Query(...), policy: str = Query(...)):
     job = request.app.completed_jobs_collection.find_one({"uuid": job_uuid})
     if not job:
@@ -50,7 +50,7 @@ def get_job_details(request: Request, job_uuid: str = Query(...), policy: str = 
     return True
 
 
-@router.post("/ranking-queue/add-image-pair-to-queue",  description="no replacement", tags= ['deprecated3'])
+@router.post("/ranking-queue/add-image-pair-to-queue",  description = "The endpoint was deprecated and there is no replacement for it", tags= ['deprecated3'])
 def get_job_details(request: Request, job_uuid_1: str = Query(...), job_uuid_2: str = Query(...), policy: str = Query(...)):
     def extract_job_details(job_uuid, suffix):
         job = request.app.completed_jobs_collection.find_one({"uuid": job_uuid})
@@ -104,7 +104,7 @@ def get_job_details(request: Request, job_uuid_1: str = Query(...), job_uuid_2: 
 
 
 
-@router.get("/ranking-queue/get-random-image-v1", response_class=PrettyJSONResponse,  description="no replacement", tags= ['deprecated3'])
+@router.get("/ranking-queue/get-random-image-v1", response_class=PrettyJSONResponse,  description = "The endpoint was deprecated and there is no replacement for it", tags= ['deprecated3'])
 def get_random_json(request: Request, dataset: str = Query(...), size: int = Query(...), policy: str = Query(...)):
     minio_client = request.app.minio_client
     bucket_name = "datasets"
@@ -146,7 +146,7 @@ def get_random_json(request: Request, dataset: str = Query(...), size: int = Que
     return results
 
 
-@router.get("/ranking-queue/get-random-image-pair-v1", response_class=PrettyJSONResponse,  description="no replacement", tags= ['deprecated3'])
+@router.get("/ranking-queue/get-random-image-pair-v1", response_class=PrettyJSONResponse,  description = "The endpoint was deprecated and there is no replacement for it", tags= ['deprecated3'])
 def get_random_image_pair(request: Request, dataset: str = Query(...), size: int = Query(...), policy: str = Query(...)):
     minio_client = request.app.minio_client
     bucket_name = "datasets"
@@ -191,7 +191,7 @@ def get_random_image_pair(request: Request, dataset: str = Query(...), size: int
     return results
 
 
-@router.get("/ranking-queue/get-random-image-pair-v2", response_class=PrettyJSONResponse,  description="no replacement", tags= ['deprecated3'])
+@router.get("/ranking-queue/get-random-image-pair-v2", response_class=PrettyJSONResponse,  description = "The endpoint was deprecated and there is no replacement for it", tags= ['deprecated3'])
 def get_random_image_pair(request: Request, dataset: str = Query(...), size: int = Query(...), policy: str = Query(...)):
     minio_client = request.app.minio_client
     bucket_name = "datasets"
@@ -233,7 +233,7 @@ def get_random_image_pair(request: Request, dataset: str = Query(...), size: int
     return results
 
 
-@router.delete("/ranking-queue/remove-ranking-queue-single",  description="no replacement", tags= ['deprecated3'])
+@router.delete("/ranking-queue/remove-ranking-queue-single",  description = "The endpoint was deprecated and there is no replacement for it", tags= ['deprecated3'])
 def remove_single_image_from_queue(request: Request, dataset: str = Query(...), policy: str = Query(...), filename: str = Query(...)):
     # Define bucket name and construct the base path with the dataset name
     minio_client = request.app.minio_client
@@ -257,7 +257,7 @@ def remove_single_image_from_queue(request: Request, dataset: str = Query(...), 
     else:
         return {"status": "success", "message": "Image removed from queue"}
 
-@router.delete("/ranking-queue/remove-ranking-queue-pair",  description="no replacement", tags= ['deprecated3'])
+@router.delete("/ranking-queue/remove-ranking-queue-pair",  description = "The endpoint was deprecated and there is no replacement for it", tags= ['deprecated3'])
 def remove_image_pair_from_queue(request: Request, dataset: str = Query(...), policy: str = Query(...), filename: str = Query(...)):
     # Define bucket name and construct the base path with the dataset name
     minio_client = request.app.minio_client
@@ -282,7 +282,7 @@ def remove_image_pair_from_queue(request: Request, dataset: str = Query(...), po
         return {"status": "success", "message": "Image pair removed from queue"}
 
 
-@router.delete("/ranking-queue/remove-ranking-queue-pair-v1",  description="no replacement", tags= ['deprecated3'])
+@router.delete("/ranking-queue/remove-ranking-queue-pair-v1",  description = "The endpoint was deprecated and there is no replacement for it", tags= ['deprecated3'])
 def remove_image_pair_from_queue(request: Request, json_file_path: str = Query(...)):
     minio_client = request.app.minio_client
     bucket_name = "datasets"
@@ -302,7 +302,7 @@ def remove_image_pair_from_queue(request: Request, json_file_path: str = Query(.
 
 
 
-@router.get("/ranking-queue/get-policy-list", response_class=PrettyJSONResponse,  description="no replacement", tags= ['deprecated3'])
+@router.get("/ranking-queue/get-policy-list", response_class=PrettyJSONResponse,  description = "The endpoint was deprecated and there is no replacement for it", tags= ['deprecated3'])
 def get_directory_names(request: Request, dataset: str, type: str):
     if type not in ["ranking-queue-pair", "ranking-queue-image"]:
         raise HTTPException(status_code=400, detail="Invalid type parameter")
@@ -325,7 +325,7 @@ def get_directory_names(request: Request, dataset: str, type: str):
 
 
 
-@router.get("/ranking-queue/count-single-images",  description="no replacement", tags= ['deprecated3'])
+@router.get("/ranking-queue/count-single-images",  description = "The endpoint was deprecated and there is no replacement for it", tags= ['deprecated3'])
 def count_image_pairs(
     request: Request,
     dataset: str = Query(default=None),
@@ -367,7 +367,7 @@ def count_image_pairs(
         print(f"Error occurred: {str(e)}")  
 
 
-@router.get("/ranking-queue/count-image-pairs",  description="no replacement", tags= ['deprecated3'])
+@router.get("/ranking-queue/count-image-pairs",  description = "The endpoint was deprecated and there is no replacement for it", tags= ['deprecated3'])
 def count_image_pairs(
     request: Request,
     dataset: str = Query(default=None),

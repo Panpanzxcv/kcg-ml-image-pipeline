@@ -134,6 +134,7 @@ async def create_user_v1(request: Request, data: User):
     response_handler = await ApiResponseHandlerV1.createInstance(request)
     try:
         # Querying database to check if user already exists
+        uuid = Uuid64.create_new_uuid()
         user = request.app.users_collection.find_one({"username": data.username})
         if user is not None:
             return response_handler.create_error_response_v1(
@@ -147,7 +148,7 @@ async def create_user_v1(request: Request, data: User):
             'password': get_hashed_password(data.password),
             'role': data.role,
             'is_active': True,
-            'uuid': Uuid64.create_new_uuid()
+            'uuid': uuid.to_mongo_value()
         }
         request.app.users_collection.insert_one(user)
         # Remove the auto generated field

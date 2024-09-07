@@ -18,7 +18,7 @@ import json
 
 router = APIRouter()
 
-@router.post("/active-learning-queue/add-queue-pair-to-mongo",  description="no replacement", tags= ['deprecated3'])
+@router.post("/active-learning-queue/add-queue-pair-to-mongo",  description = "The endpoint was deprecated and there is no replacement for it", tags= ['deprecated3'])
 def add_queue_pair(request: Request, queue_pair: ActiveLearningQueuePair):
     # Validate and retrieve the active learning policy using the active_learning_policy_id
     policy = request.app.active_learning_policies_collection.find_one(
@@ -84,7 +84,7 @@ def add_queue_pair(request: Request, queue_pair: ActiveLearningQueuePair):
 
 
 
-@router.get("/active-learning-queue/list-queue-pairs-from-mongo", response_class=PrettyJSONResponse,  description="no replacement", tags= ['deprecated3'])
+@router.get("/active-learning-queue/list-queue-pairs-from-mongo", response_class=PrettyJSONResponse,  description = "The endpoint was deprecated and there is no replacement for it", tags= ['deprecated3'])
 def list_queue_pairs(request: Request, dataset: Optional[str] = None, limit: int = 10, offset: int = 0):
     # Build the query based on whether a dataset is provided
     query = {"dataset": dataset} if dataset else {}
@@ -103,7 +103,7 @@ def list_queue_pairs(request: Request, dataset: Optional[str] = None, limit: int
     return queue_pairs
 
 
-@router.get("/active-learning-queue/get-random-queue-pair-from-mongo", response_class=PrettyJSONResponse,  description="no replacement", tags= ['deprecated3'])
+@router.get("/active-learning-queue/get-random-queue-pair-from-mongo", response_class=PrettyJSONResponse,  description = "The endpoint was deprecated and there is no replacement for it", tags= ['deprecated3'])
 def random_queue_pair(request: Request, size: int = 1, dataset: Optional[str] = None, active_learning_policy: Optional[str] = None):
     # Define the aggregation pipeline
     pipeline = []
@@ -134,7 +134,7 @@ def random_queue_pair(request: Request, size: int = 1, dataset: Optional[str] = 
 
 
 
-@router.delete("/active-learning-queue/delete-queue-pair-from-mongo",  description="no replacement", tags= ['deprecated3'])
+@router.delete("/active-learning-queue/delete-queue-pair-from-mongo",  description = "The endpoint was deprecated and there is no replacement for it", tags= ['deprecated3'])
 def delete_queue_pair(request: Request, id: str):
     # Convert the string ID to ObjectId
     try:
@@ -152,7 +152,7 @@ def delete_queue_pair(request: Request, id: str):
     return {"status": "success", "message": f"Deleted queue pair with _id: {id} from MongoDB"}
 
 
-@router.get("/active-learning-queue/count-queue-pairs", description="no replacement", tags= ['deprecated3'])
+@router.get("/active-learning-queue/count-queue-pairs", description = "The endpoint was deprecated and there is no replacement for it", tags= ['deprecated3'])
 def count_queue_pairs(request: Request, dataset: Optional[str] = None, active_learning_policy: Optional[str] = None):
     # Build a query filter based on the provided parameters
     query_filter = {}

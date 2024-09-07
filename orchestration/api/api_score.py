@@ -428,7 +428,7 @@ def get_image_rank_scores_by_model_id(
 def list_rank_scores(
     request: Request, 
     rank_model_id: int, 
-    score_field: str = Query(..., description="Score field for filtering and sorting."),
+    score_field: str = Query(..., description="Score field for selecting if the data must be filtered and sorted by score or sigma score."),
     image_source: Optional[str] = Query(None, regex="^(generated_image|extract_image|external_image)$"),
     limit: int = Query(20, description="Limit for pagination"),
     offset: int = Query(0, description="Offset for pagination"),
@@ -476,9 +476,9 @@ def list_rank_scores(
         # Modify behavior based on random_sampling parameter
         if random_sampling:
             pipeline = [
-                {"$match": query},
-                {"$sort": {score_field: 1 if sort_order == 'asc' else -1}},
-                {"$sample": {"size": limit}}
+                {"$match": query}, 
+                {"$sample": {"size": limit}},  
+                {"$sort": {score_field: 1 if sort_order == 'asc' else -1}}  
             ]
             items = list(request.app.image_rank_scores_collection.aggregate(pipeline))
         else:
