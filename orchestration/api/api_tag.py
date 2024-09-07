@@ -1288,6 +1288,55 @@ def get_images_by_source_v2(
         return response_handler.create_error_response_v1(
             error_code=ErrorCode.OTHER_ERROR, error_string="Internal Server Error", http_status_code=500
         )
+    
+
+@router.get("/tags/get-invalid-image-sources",
+            tags=["tags"], 
+            status_code=200,
+            description="Get images with invalid image sources",
+            response_model=StandardSuccessResponseV1[ListImageTag], 
+            responses=ApiResponseHandlerV1.listErrors([400, 422, 500]))
+def get_invalid_image_sources(
+    request: Request
+):
+    response_handler = ApiResponseHandlerV1(request)
+
+    try:
+        # Define the valid image sources
+        valid_image_sources = ['generated_image', 'extract_image', 'external_image']
+
+        # Build the query to find images with an image_source not in the valid list
+        query = {"image_source": {"$nin": valid_image_sources}}
+
+        # Execute the query
+        invalid_image_cursor = request.app.image_tags_collection.find(query)
+
+        # Process the results
+        invalid_images_list = []
+        for image_data in invalid_image_cursor:
+            if "image_hash" in image_data and "user_who_created" in image_data and "file_path" in image_data:
+                invalid_image = ImageTag(
+                    file_path=image_data["file_path"], 
+                    image_hash=str(image_data["image_hash"]),
+                    tag_type=int(image_data["tag_type"]),
+                    user_who_created=image_data["user_who_created"],
+                    creation_time=image_data.get("creation_time", None)
+                )
+                invalid_images_list.append(invalid_image.model_dump())  # Convert to dictionary
+        
+        # Return the list of invalid images in a standard success response
+        return response_handler.create_success_response_v1(
+            response_data={"invalid_images": invalid_images_list}, 
+            http_status_code=200,
+        )
+
+    except Exception as e:
+        print(e)
+        # Log the exception details here, if necessary
+        return response_handler.create_error_response_v1(
+            error_code=ErrorCode.OTHER_ERROR, error_string="Internal Server Error", http_status_code=500
+        )
+
 
     
         
