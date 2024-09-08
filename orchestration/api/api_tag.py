@@ -1236,7 +1236,7 @@ def remove_by_tag_id(request: Request, tag_id: int, image_source: str = Query(..
         # Check if any documents were deleted
         if delete_result.deleted_count == 0:
             return response_handler.create_error_response_v1(
-                error_code=ErrorCode.NOT_FOUND,
+                error_code=ErrorCode.ELEMENT_NOT_FOUND,
                 error_string=f"No objects found with tag_id {tag_id} and image_source {image_source}",
                 http_status_code=404,
             )
