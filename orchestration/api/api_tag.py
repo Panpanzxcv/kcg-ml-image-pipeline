@@ -1221,6 +1221,40 @@ def get_tagged_images_v2(
         )
 
 
+@router.delete("/tags/remove-by-tag-id", 
+               response_model=StandardSuccessResponseV1[int], 
+               description="Remove all objects with a specific tag ID and image source",
+               tags=["tags"],
+               status_code=200,
+               responses=ApiResponseHandlerV1.listErrors([400, 404, 422, 500]))
+def remove_by_tag_id(request: Request, tag_id: int, image_source: str = Query(..., regex="^(generated_image|extract_image|external_image)$")):
+    response_handler = ApiResponseHandlerV1(request)
+    try:
+        # Remove all documents that match the tag_id and image_source
+        delete_result = request.app.image_tags_collection.delete_many({"tag_id": tag_id, "image_source": image_source})
+        
+        # Check if any documents were deleted
+        if delete_result.deleted_count == 0:
+            return response_handler.create_error_response_v1(
+                error_code=ErrorCode.NOT_FOUND,
+                error_string=f"No objects found with tag_id {tag_id} and image_source {image_source}",
+                http_status_code=404,
+            )
+        
+        # Return success response with deleted count
+        return response_handler.create_success_response_v1(
+            response_data={"deleted_count": delete_result.deleted_count},
+            http_status_code=200,
+        )
+    except Exception as e:
+        # Optional: Log the exception details here
+        return response_handler.create_error_response_v1(
+            error_code=ErrorCode.OTHER_ERROR,
+            error_string=str(e),
+            http_status_code=500,
+        )
+
+
 @router.get("/tags/get-images-by-source-v1",
             tags=["tags"], 
             status_code=200,
