@@ -3,14 +3,13 @@ from pymongo import MongoClient
 from minio.error import S3Error
 
 
-# need changes
 
 # Initialize MinIO client
 minio_client = Minio(
-    "minio.yourdomain.com",  
-    access_key="your-access-key",
-    secret_key="your-secret-key",
-    secure=True  
+    '192.168.3.5:9000',  
+    access_key='v048BpXpWrsVIHUfdAix',  
+    secret_key='4TFS20qkxVuX2HaC8ezAgG7GaDlVI1TqSPs0BKyu', 
+    secure=False  
 )
 
 # Initialize MongoDB client
@@ -21,7 +20,7 @@ db = mongo_client["your_database"]
 collections_and_buckets = {
     "extract": {"collection": db.extract_collection, "bucket": "extract"},
     "external": {"collection": db.external_collection, "bucket": "external"},
-    "complete": {"collection": db.completed_jobs_collection, "bucket": "complete"}
+    "complete": {"collection": db.completed_jobs_collection, "bucket": "datasets"}
 }
 
 # Helper function to list files in MinIO bucket

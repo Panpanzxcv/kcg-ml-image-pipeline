@@ -1787,3 +1787,68 @@ def update_tag_category_deprecated_status(request: Request, tag_category_id: int
         response_data= updated_tag_category, 
         http_status_code=200,
     )
+
+@router.get("/tags/get-images-by-tag-id-v2", 
+            tags=["tags"], 
+            status_code=200,
+            description="Get images by tag_id",
+            response_model=StandardSuccessResponseV1[ListImageTag], 
+            responses=ApiResponseHandlerV1.listErrors([400, 422, 500]))
+def get_tagged_images_v1(
+    request: Request, 
+    tag_id: int,
+    image_source: str = Query("generated_image", regex="^(generated_image|extract_image|external_image)$"),  # Add image_source as a query parameter
+    start_date: str = None,
+    end_date: str = None,
+    order: str = Query("desc", description="Order in which the data should be returned. 'asc' for oldest first, 'desc' for newest first")
+):
+    response_handler = ApiResponseHandlerV1(request)
+    try:
+        # Validate start_date and end_date
+        if start_date:
+            validated_start_date = validate_date_format(start_date)
+            if validated_start_date is None:
+                return response_handler.create_error_response_v1(
+                    error_code=ErrorCode.INVALID_PARAMS, 
+                    error_string="Invalid start_date format. Expected format: YYYY-MM-DDTHH:MM:SS", 
+                    http_status_code=400,
+                )
+        if end_date:
+            validated_end_date = validate_date_format(end_date)
+            if validated_end_date is None:
+                return response_handler.create_error_response_v1(
+                    error_code=ErrorCode.INVALID_PARAMS, 
+                    error_string="Invalid end_date format. Expected format: YYYY-MM-DDTHH:MM:SS",
+                    http_status_code=400,
+                )
+
+        # Build the query
+        query = {"tag_id": tag_id, "image_source": image_source}
+        if start_date and end_date:
+            query["creation_time"] = {"$gte": validated_start_date, "$lte": validated_end_date}
+        elif start_date:
+            query["creation_time"] = {"$gte": validated_start_date}
+        elif end_date:
+            query["creation_time"] = {"$lte": validated_end_date}
+
+        # Decide the sort order
+        sort_order = -1 if order == "desc" else 1
+
+        # Execute the query and fetch documents directly
+        image_tags_cursor = request.app.image_tags_collection.find(query).sort("creation_time", sort_order)
+
+        # Convert cursor to list of dictionaries (MongoDB documents)
+        image_info_list = list(image_tags_cursor)
+
+        # Return the list of images in a standard success response
+        return response_handler.create_success_response_v1(
+            response_data={"images": image_info_list}, 
+            http_status_code=200,
+        )  
+
+    except Exception as e:
+        print(e)
+        # Log the exception details here, if necessary
+        return response_handler.create_error_response_v1(
+            error_code=ErrorCode.OTHER_ERROR, error_string="Internal Server Error", http_status_code=500
+        )
