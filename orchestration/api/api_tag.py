@@ -1839,7 +1839,7 @@ def get_tagged_images_v1(
 
         # Convert cursor to list of dictionaries (MongoDB documents)
         image_info_list = list(image_tags_cursor)
-        image_info_list.pop('_id', None)
+        image_info_list.pop('_id')
 
         # Return the list of images in a standard success response
         return response_handler.create_success_response_v1(
