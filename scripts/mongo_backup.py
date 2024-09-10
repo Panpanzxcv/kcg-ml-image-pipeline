@@ -4,7 +4,7 @@ import zipfile
 from datetime import datetime
 from minio import Minio
 import logging
-from utility.minio.cmd import upload_from_file
+from .utility.minio.cmd import upload_from_file
 
 # MongoDB connection URL
 MONGO_URL = "mongodb://192.168.3.1:32017/"
