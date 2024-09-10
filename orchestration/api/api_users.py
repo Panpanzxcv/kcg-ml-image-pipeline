@@ -137,9 +137,15 @@ def list_users(request: Request):
         # Fetch users from the database
         users = list(request.app.users_collection.find({}))
 
-        # Remove sensitive data
+        # Remove sensitive data and format uuid
         for user in users:
             user.pop('_id', None)
+            if "uuid" in user:
+                if isinstance(user['uuid'], int):
+                    uuid64 = Uuid64.from_mongo_value(user['uuid'])
+                    user['uuid'] = uuid64.to_formatted_str()
+                elif isinstance(user['uuid'], Uuid64):
+                    user['uuid'] = user['uuid'].to_formatted_str()
 
         # Return a standardized success response
         return api_response_handler.create_success_response_v1(
@@ -154,6 +160,7 @@ def list_users(request: Request):
             error_string="Failed to fetch users.", 
             http_status_code=500
         )
+
 
 
 @router.post('/users/create-v1', 
