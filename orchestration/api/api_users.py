@@ -124,6 +124,14 @@ def list_users(request:Request, user: User = Depends(is_admin)):
 
     return users
 
+@router.get('/users/list-v1')
+def list_users(request:Request):
+    users = list(request.app.users_collection.find({}))
+
+    for user in users:
+        user.pop('_id', None)
+
+    return users
 
 @router.post('/users/create-v1', 
              summary="Create new user",
