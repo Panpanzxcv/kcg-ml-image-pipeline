@@ -46,6 +46,8 @@ from orchestration.api.api_ingress_videos import router as ingress_videos_router
 from orchestration.api.api_bucket import router as bucket_router
 from orchestration.api.api_all_images import router as all_images
 from orchestration.api.api_video_game import router as video_game_router
+from orchestration.api.api_clustered_image import router as image_clustered_router
+from orchestration.api.api_cluster_model import router as cluster_model_router
 from utility.minio import cmd
 
 config = dotenv_values("./orchestration/api/.env")
@@ -96,6 +98,8 @@ app.include_router(ingress_videos_router)
 app.include_router(bucket_router)
 app.include_router(all_images)
 app.include_router(video_game_router)
+app.include_router(image_clustered_router)
+app.include_router(cluster_model_router)
 
 
 
@@ -230,6 +234,18 @@ def startup_db_client():
 
     app.all_image_collection = app.mongodb_db["all-images"]
 
+    all_images_hash_index=[
+    ('image_hash', pymongo.ASCENDING)
+    ]
+    create_index_if_not_exists(app.all_image_collection ,all_images_hash_index, 'all_images_hash_index')
+
+    all_images_hash_and_bucket_index=[
+    ('image_hash', pymongo.ASCENDING),
+    ('bucket_id', pymongo.ASCENDING)
+    ]
+    create_index_if_not_exists(app.all_image_collection ,all_images_hash_and_bucket_index, 'all_images_hash_and_bucket_index')
+
+
     # bucket collection
 
     app.buckets_collection = app.mongodb_db["buckets"]
@@ -251,6 +267,10 @@ def startup_db_client():
     app.tag_definitions_collection = app.mongodb_db["tag_definitions"]
     app.image_tags_collection = app.mongodb_db["image_tags"]
 
+    # image-clustering
+    app.clustered_images_collection = app.mongodb_db["clustered_images"]
+    app.cluster_model_collection = app.mongodb_db["cluster_models"]
+    
     tagged_images_hash_index=[
     ('image_hash', pymongo.ASCENDING)
     ]
@@ -337,6 +357,12 @@ def startup_db_client():
     # scores
     create_collection_if_not_exists(app.mongodb_db, "image_rank_scores")
     app.image_rank_scores_collection = app.mongodb_db["image_rank_scores"]
+
+    rank_scores_hash_index=[
+    ("image_hash", pymongo.ASCENDING),
+    ]
+    create_index_if_not_exists(app.image_rank_scores_collection , rank_scores_hash_index, "rank_scores_hash_index")
+
 
     rank_scores_index=[
     ("uuid", pymongo.ASCENDING),

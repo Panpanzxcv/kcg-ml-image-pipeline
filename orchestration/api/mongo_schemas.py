@@ -298,6 +298,33 @@ class RankingScore(BaseModel):
             "sigma_score": self.sigma_score
         }
 
+class OldRankingScoreForBatchInsertion(BaseModel):
+    rank_model_id: int
+    rank_id: int
+    uuid: str
+    image_hash: str
+    score: float    
+    sigma_score: float
+    image_source: str
+
+class OldRankingScoreListForBatchInsertion(BaseModel):
+    scores: List[OldRankingScoreForBatchInsertion]  
+
+class RankingScoreForBatchInsertion(BaseModel):
+    rank_model_id: int
+    rank_id: int
+    uuid: str
+    image_hash: str
+    score: float    
+    sigma_score: float
+    image_source: str
+    image_uuid: str
+    bucket_id: int
+    dataset_id: int
+
+class RankingScoreListForBatchInsertion(BaseModel):
+    scores: List[RankingScoreForBatchInsertion]  
+
 class ResponseRankingScore(BaseModel):
     rank_model_id: int
     rank_id: int
@@ -307,6 +334,7 @@ class ResponseRankingScore(BaseModel):
     sigma_score: float
     image_source: str
     creation_time: str
+    image_uuid: int
 
 class ListRankingScore(BaseModel):
     scores: List[ResponseRankingScore]  
@@ -379,6 +407,7 @@ class ClassifierScoreV1(BaseModel):
     tag_id: int
     score: float
     creation_time: Union[str, None] = None
+    image_uuid: Union[int, None]
 
     def to_dict(self):
         return {
@@ -388,7 +417,8 @@ class ClassifierScoreV1(BaseModel):
             "image_hash": self.image_hash,
             "tag_id": self.tag_id,
             "score": self.score,
-            "creation_time" : self.creation_time
+            "creation_time" : self.creation_time,
+            "image_uuid": self.image_uuid
         }
 
 class ImageResolution(BaseModel):

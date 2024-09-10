@@ -275,7 +275,7 @@ async def delete_completed_job(request: Request, uuid: str):
             )
 
         # Remove the image data from additional collections
-        remove_from_additional_collections(request, image_hash)
+        remove_from_additional_collections(request, image_hash, bucket_id=0, image_source="generated_image")
 
         path_parts = file_path.split("/", 1)
         if len(path_parts) < 2:

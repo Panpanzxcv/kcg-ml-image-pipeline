@@ -50,18 +50,22 @@ def process_job(job):
         print("Skipping job due to missing uuid")
         return None  # Skip if uuid is not available
 
+    print(f"Determining target collection for image_hash: {image_hash}")
     target_collection, field_path = determine_target_collection(image_hash)
     if target_collection is None:
-        print("Skipping job due to undefined target collection")
+        print(f"Skipping job due to undefined target collection for image_hash: {image_hash}")
         return None
 
+    print(f"Checking if job should be skipped for image_hash: {image_hash} with uuid: {uuid}")
     if should_skip_job(job, target_collection):
         print(f"Skipping job with uuid {uuid} due to task_type containing 'clip' or existing image_uuid")
         return None
 
+    print(f"Job with uuid {uuid} will be processed and migrated to image_uuid")
     job["image_uuid"] = uuid  # Migrate the existing uuid as image_uuid
 
     return job, target_collection, field_path
+
 
 # Process all documents in all_images_collection
 print("Processing all documents in all_images_collection...")
@@ -76,8 +80,9 @@ try:
         if image_hash:
             print(f"Found job with image_hash: {image_hash} -> {job}")
 
-            processed_job, target_collection, field_path = process_job(job)
-            if processed_job is not None:
+            result = process_job(job)
+            if result is not None:
+                processed_job, target_collection, field_path = result
                 print(f"Processed job: {processed_job}")
                 print(f"Target collection: {target_collection.name}")
 
@@ -92,6 +97,7 @@ try:
                 if len(bulk_operations[target_collection.name]) >= batch_size:
                     target_collection.bulk_write(bulk_operations[target_collection.name])
                     bulk_operations[target_collection.name] = []
+
 
     for collection_name, operations in bulk_operations.items():
         if operations:
