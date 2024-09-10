@@ -124,14 +124,37 @@ def list_users(request:Request, user: User = Depends(is_admin)):
 
     return users
 
-@router.get('/users/list-v1')
-def list_users(request:Request):
-    users = list(request.app.users_collection.find({}))
+@router.get('/users/list-v1', 
+            description="List all users", 
+            status_code=200, 
+            tags=["users"],  
+            response_model=StandardSuccessResponseV1[list],  
+            responses=ApiResponseHandlerV1.listErrors([400, 422, 500]))
+def list_users(request: Request):
+    api_response_handler = ApiResponseHandlerV1(request)
 
-    for user in users:
-        user.pop('_id', None)
+    try:
+        # Fetch users from the database
+        users = list(request.app.users_collection.find({}))
 
-    return users
+        # Remove sensitive data
+        for user in users:
+            user.pop('_id', None)
+
+        # Return a standardized success response
+        return api_response_handler.create_success_response_v1(
+            response_data=users,
+            http_status_code=200
+        )
+    
+    except Exception as e:
+        # Return a standardized error response in case of any failure
+        return api_response_handler.create_error_response_v1(
+            error_code=ErrorCode.OTHER_ERROR, 
+            error_string="Failed to fetch users.", 
+            http_status_code=500
+        )
+
 
 @router.post('/users/create-v1', 
              summary="Create new user",

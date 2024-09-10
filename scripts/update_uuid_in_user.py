@@ -1,4 +1,8 @@
 from pymongo import MongoClient
+import os
+import sys
+base_directory = "./"
+sys.path.insert(0, base_directory)
 from orchestration.api.utils.uuid64 import Uuid64 
 
 # Initialize the MongoDB client and the users collection
