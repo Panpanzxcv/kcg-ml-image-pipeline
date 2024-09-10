@@ -1,10 +1,13 @@
 import os
+import sys
+base_directory = "./"
+sys.path.insert(0, base_directory)
 import subprocess
 import zipfile
 from datetime import datetime
 from minio import Minio
 import logging
-from .utility.minio.cmd import upload_from_file
+from utility.minio import cmd
 
 # MongoDB connection URL
 MONGO_URL = "mongodb://192.168.3.1:32017/"
@@ -88,4 +91,4 @@ if __name__ == "__main__":
 
     # Upload the compressed backup to MinIO
     minio_object_name = f"mongodb-backup-{current_date}.zip"
-    upload_from_file(minio_client, MINIO_BUCKET, minio_object_name, backup_zip)
+    cmd.upload_from_file(minio_client, MINIO_BUCKET, minio_object_name, backup_zip)
