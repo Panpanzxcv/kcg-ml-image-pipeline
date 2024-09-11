@@ -76,7 +76,25 @@ def backup_mongo(database, collections=None):
 if __name__ == "__main__":
     # Specify the database and collections you want to back up
     database_name = "orchestration-job-db"  
-    collections_to_backup = ["ranking_datapoints", "image_tags"]  # These are the specific collections
+    collections_to_backup = ["ranking_datapoints", 
+                             "image_tags", 
+                             "users", 
+                             "completed-jobs",
+                              "completed-inpainting-jobs",
+                               "all-images",
+                               "buckets",
+                                "datasets",
+                                 "rank_definitions",
+                                  "rank_categories",
+                                   "tag_definitions"
+                                    "tag_categories",
+                                     "external_images",
+                                      "extracts",
+                                       "classifier_models",
+                                        "ranking_models",
+                                         "irrelevant_images",
+                                          "rank_pairs",
+                                           "rank_active_learning_policy" ]  # These are the specific collections
 
     # Call the backup function for the specified collections
     backup_mongo(database_name, collections_to_backup)
