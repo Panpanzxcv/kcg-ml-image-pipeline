@@ -98,17 +98,12 @@ def process_msgpack(bucket_name, file_path):
     # Update the msgpack data with uuid and image_uuid
     updated_data = update_msgpack_data(msgpack_data, bucket_collection)
 
-    # Print updated msgpack data
-
     # Convert updated data back to msgpack format
     updated_msgpack = BytesIO()
 
     # Packing the updated data
     print("Packing updated data back to msgpack format")
-    packed_data = msgpack.pack(updated_data, use_bin_type=True)
-    
-    # Write packed data to BytesIO object
-    updated_msgpack.write(packed_data)
+    msgpack.pack(updated_data, updated_msgpack, use_bin_type=True)  # Corrected: Pass the stream (updated_msgpack)
 
     # Make sure to reset the BytesIO buffer to the start before uploading
     updated_msgpack.seek(0)
