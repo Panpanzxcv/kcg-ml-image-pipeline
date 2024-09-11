@@ -78,7 +78,7 @@ def process_msgpack(bucket_name, file_path):
 
     # Convert updated data back to msgpack format
     updated_msgpack = BytesIO()
-    msgpack.packb(updated_data, updated_msgpack, use_bin_type=True)
+    msgpack.pack(updated_data, updated_msgpack, use_bin_type=True)  
 
     # Upload the updated msgpack back to Minio
     updated_msgpack.seek(0)
@@ -86,6 +86,7 @@ def process_msgpack(bucket_name, file_path):
 
     # Save orphaned image_hashes to CSV
     save_orphaned_hashes_to_csv("orphaned_image_hashes.csv")
+
 
 # Example usage
 bucket_name = 'external'  # or 'extract'
