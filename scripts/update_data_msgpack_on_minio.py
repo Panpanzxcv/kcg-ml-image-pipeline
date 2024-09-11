@@ -39,22 +39,29 @@ def get_collection(bucket_name):
     else:
         raise ValueError(f"Unknown bucket name: {bucket_name}")
 
-# Function to update msgpack data with both uuid and image_uuid
+# Function to update msgpack data with uuid, image_uuid, and ensure the correct order
 def update_msgpack_data(data, bucket_collection):
     print(f"Updating msgpack data...")
     for entry in data:
         image_hash = entry.get("image_hash")
+        clip_vector = entry.get("clip_vector")
+        
         if image_hash:
             print(f"Processing image_hash: {image_hash}")
             uuid_value, image_uuid = get_uuids(image_hash, bucket_collection)  # Fetch both uuid and image_uuid
             
-            if uuid_value:
-                entry["uuid"] = uuid_value  # Restore the uuid field if found
-                print(f"Updated uuid for image_hash {image_hash}")
-            
-            if image_uuid:
-                entry["image_uuid"] = image_uuid  # Add image_uuid if found
-                print(f"Updated image_uuid for image_hash {image_hash}")
+            if uuid_value and image_uuid:
+                # Rebuild the entry in the correct order
+                reordered_entry = {
+                    "uuid": uuid_value,
+                    "image_uuid": image_uuid,
+                    "image_hash": image_hash,
+                    "clip_vector": clip_vector
+                }
+                # Update the entry with the reordered dictionary
+                entry.clear()  # Clear the existing dictionary
+                entry.update(reordered_entry)  # Update with the new order
+                print(f"Updated and reordered entry for image_hash {image_hash}")
             
             # If neither uuid nor image_uuid is found, log as orphaned
             if not uuid_value and not image_uuid:
@@ -87,13 +94,11 @@ def process_msgpack(bucket_name, file_path):
     response.release_conn()
 
     # Print original msgpack data before updating
-    print(f"Original msgpack data before update: {msgpack_data}")
 
     # Update the msgpack data with uuid and image_uuid
     updated_data = update_msgpack_data(msgpack_data, bucket_collection)
 
     # Print updated msgpack data
-    print(f"Updated msgpack data: {updated_data}")
 
     # Convert updated data back to msgpack format
     updated_msgpack = BytesIO()
