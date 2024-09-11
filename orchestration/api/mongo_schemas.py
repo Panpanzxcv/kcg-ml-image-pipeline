@@ -636,7 +636,7 @@ class ClassifierScoreRequestV1(BaseModel):
     tag_id: int
     image_hash: str
     image_source: str
-    image_uuid: int
+    image_uuid: str
 
 class ClassifierScoreRequestV2(BaseModel):
     job_uuid: str

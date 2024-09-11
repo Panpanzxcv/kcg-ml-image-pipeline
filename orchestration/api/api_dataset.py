@@ -870,17 +870,23 @@ async def list_datasets(request: Request):
                 http_status_code=200
             )       
 
-
 @router.delete("/datasets/remove-dataset",
                description="Remove dataset and its configuration in MongoDB",
                tags=["dataset"],
                response_model=StandardSuccessResponseV1[WasPresentResponse],  
                responses=ApiResponseHandlerV1.listErrors([422]))
-async def remove_dataset(request: Request, dataset: str = Query(...)):
+async def remove_dataset(
+    request: Request, 
+    dataset: str = Query(...), 
+    bucket_id: int = Query(0, description="Bucket ID to filter by, default is 0")
+):
     response_handler = await ApiResponseHandlerV1.createInstance(request)
 
-    # Fetch the dataset entry using the dataset name
-    dataset_entry = request.app.datasets_collection.find_one({"dataset_name": dataset}, {"dataset_id": 1, "bucket_id": 1})
+    # Fetch the dataset entry using the dataset name and bucket_id
+    dataset_entry = request.app.datasets_collection.find_one(
+        {"dataset_name": dataset, "bucket_id": bucket_id}, 
+        {"dataset_id": 1, "bucket_id": 1}
+    )
     
     if not dataset_entry:
         return response_handler.create_success_delete_response_v1(was_present=False)
@@ -911,7 +917,6 @@ async def remove_dataset(request: Request, dataset: str = Query(...)):
 
     # Return a standard response with was_present set to true if there was a deletion
     return response_handler.create_success_delete_response_v1(was_present=was_present)
-
 
 
 
