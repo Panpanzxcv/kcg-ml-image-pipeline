@@ -91,10 +91,14 @@ def process_msgpack(bucket_name, file_path):
 
     # Convert updated data back to msgpack format
     updated_msgpack = BytesIO()
+
+    print("Packing updated data back to msgpack format")
     msgpack.pack(updated_data, updated_msgpack, use_bin_type=True)
 
-    # Upload the updated msgpack back to Minio
+    # Make sure to reset the BytesIO buffer to the start before uploading
     updated_msgpack.seek(0)
+
+    print(f"Uploading updated msgpack file: {file_path} to bucket: {bucket_name}")
     minio_client.put_object(bucket_name, file_path, data=updated_msgpack, length=updated_msgpack.getbuffer().nbytes)
     print(f"Uploaded updated msgpack file: {file_path} to bucket: {bucket_name}")
 
