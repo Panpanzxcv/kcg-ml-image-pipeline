@@ -21,12 +21,11 @@ orphaned_hashes = []
 
 # Function to fetch uuid and image_uuid based on image_hash from the respective collection
 def get_uuids(image_hash, collection):
-    print(f"Fetching UUID and image_uuid for image_hash: {image_hash}")
     document = collection.find_one({"image_hash": image_hash}, {"uuid": 1, "image_uuid": 1})
     if document:
-        print(f"Found UUID: {document.get('uuid')}, image_uuid: {document.get('image_uuid')}")
+        print(f"Found for image_hash {image_hash}: UUID: {document.get('uuid')}, image_uuid: {document.get('image_uuid')}")
         return document.get("uuid"), document.get("image_uuid")
-    print(f"Could not find UUID or image_uuid for image_hash: {image_hash}")
+    print(f"No UUID or image_uuid found for image_hash: {image_hash}")
     return None, None
 
 # Function to determine the correct collection based on the bucket name
@@ -44,18 +43,18 @@ def get_collection(bucket_name):
 def update_msgpack_data(data, bucket_collection):
     print(f"Updating msgpack data...")
     for entry in data:
-        print(f"Processing entry: {entry}")
         image_hash = entry.get("image_hash")
         if image_hash:
+            print(f"Processing image_hash: {image_hash}")
             uuid_value, image_uuid = get_uuids(image_hash, bucket_collection)  # Fetch both uuid and image_uuid
             
             if uuid_value:
                 entry["uuid"] = uuid_value  # Restore the uuid field if found
-                print(f"Updated uuid to: {uuid_value}")
+                print(f"Updated uuid for image_hash {image_hash}")
             
             if image_uuid:
                 entry["image_uuid"] = image_uuid  # Add image_uuid if found
-                print(f"Updated image_uuid to: {image_uuid}")
+                print(f"Updated image_uuid for image_hash {image_hash}")
             
             # If neither uuid nor image_uuid is found, log as orphaned
             if not uuid_value and not image_uuid:
@@ -87,12 +86,8 @@ def process_msgpack(bucket_name, file_path):
     response.close()
     response.release_conn()
 
-    print(f"Original data: {msgpack_data}")
-
     # Update the msgpack data with uuid and image_uuid
     updated_data = update_msgpack_data(msgpack_data, bucket_collection)
-
-    print(f"Updated data: {updated_data}")
 
     # Convert updated data back to msgpack format
     updated_msgpack = BytesIO()
