@@ -19,14 +19,14 @@ minio_client = Minio(
 # Collection for storing orphaned image hashes
 orphaned_hashes = []
 
-# Function to fetch uuid and image_uuid based on image_hash from the respective collection
-def get_uuids(image_hash, collection):
-    document = collection.find_one({"image_hash": image_hash}, {"uuid": 1, "image_uuid": 1})
+# Function to fetch image_uuid based on image_hash from the respective collection
+def get_image_uuid(image_hash, collection):
+    document = collection.find_one({"image_hash": image_hash}, {"image_uuid": 1})
     if document:
-        print(f"Found for image_hash {image_hash}: UUID: {document.get('uuid')}, image_uuid: {document.get('image_uuid')}")
-        return document.get("uuid"), document.get("image_uuid")
-    print(f"No UUID or image_uuid found for image_hash: {image_hash}")
-    return None, None
+        print(f"Found for image_hash {image_hash}: image_uuid: {document.get('image_uuid')}")
+        return document.get("image_uuid")
+    print(f"No image_uuid found for image_hash: {image_hash}")
+    return None
 
 # Function to determine the correct collection based on the bucket name
 def get_collection(bucket_name):
@@ -39,19 +39,20 @@ def get_collection(bucket_name):
     else:
         raise ValueError(f"Unknown bucket name: {bucket_name}")
 
-# Function to update msgpack data with uuid, image_uuid, and ensure the correct order
+# Function to update msgpack data with image_uuid, and keep the uuid from the msgpack itself
 def update_msgpack_data(data, bucket_collection):
     print(f"Updating msgpack data...")
     for entry in data:
+        uuid_value = entry.get("uuid")
         image_hash = entry.get("image_hash")
         clip_vector = entry.get("clip_vector")
         
-        if image_hash:
-            print(f"Processing image_hash: {image_hash}")
-            uuid_value, image_uuid = get_uuids(image_hash, bucket_collection)  # Fetch both uuid and image_uuid
-            
-            if uuid_value and image_uuid:
-                # Rebuild the entry in the correct order
+        if image_hash and uuid_value:
+            print(f"Processing image_hash: {image_hash} with existing uuid: {uuid_value}")
+            image_uuid = get_image_uuid(image_hash, bucket_collection)  # Fetch image_uuid only
+
+            if image_uuid:
+                # Rebuild the entry, keeping uuid from the msgpack and updating image_uuid
                 reordered_entry = {
                     "uuid": uuid_value,
                     "image_uuid": image_uuid,
@@ -63,8 +64,8 @@ def update_msgpack_data(data, bucket_collection):
                 entry.update(reordered_entry)  # Update with the new order
                 print(f"Updated and reordered entry for image_hash {image_hash}")
             
-            # If neither uuid nor image_uuid is found, log as orphaned
-            if not uuid_value and not image_uuid:
+            # If no image_uuid is found, log as orphaned
+            if not image_uuid:
                 print(f"Marking image_hash: {image_hash} as orphaned")
                 orphaned_hashes.append(image_hash)
     return data
@@ -93,9 +94,7 @@ def process_msgpack(bucket_name, file_path):
     response.close()
     response.release_conn()
 
-    # Print original msgpack data before updating
-
-    # Update the msgpack data with uuid and image_uuid
+    # Update the msgpack data with image_uuid, keeping uuid from the msgpack itself
     updated_data = update_msgpack_data(msgpack_data, bucket_collection)
 
     # Convert updated data back to msgpack format
@@ -117,5 +116,5 @@ def process_msgpack(bucket_name, file_path):
 
 # Example usage
 bucket_name = 'external'  # or 'extract'
-file_path = 'trine/clip_vectors/0001_clip_data.msgpack'  # Replace with the actual path
+file_path = 'trappist/clip_vectors/0001_clip_data.msgpack'  # Replace with the actual path
 process_msgpack(bucket_name, file_path)
