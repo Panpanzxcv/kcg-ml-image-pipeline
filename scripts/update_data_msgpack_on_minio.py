@@ -3,6 +3,7 @@ from pymongo import MongoClient
 from minio import Minio
 from io import BytesIO
 import csv
+import sys
 base_directory = "./"
 sys.path.insert(0, base_directory)
 from orchestration.api.utils.uuid64 import Uuid64  # Import Uuid64 to format the image_uuid
