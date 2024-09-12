@@ -1180,6 +1180,7 @@ async def list_external_images_without_extracts(
         images_metadata = []
         for image in images_cursor:
             image.pop('_id', None)  # Remove the auto-generated field
+            image.pop('extracts', None)  # Remove the extracts field
             images_metadata.append(image)
 
         return response_handler.create_success_response_v1(
