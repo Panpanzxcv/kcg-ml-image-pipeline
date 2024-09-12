@@ -12,10 +12,11 @@ sys.path.insert(0, os.getcwd())
 from utility.http import external_images_request
 from utility.minio import cmd
 from utility.path import separate_bucket_and_file_path
+from orchestration.api.utils.uuid64 import Uuid64 
 from kandinsky.models.clip_image_encoder.clip_image_encoder import KandinskyCLIPImageEncoder
 from utility.http.request import http_get_completed_job_by_dataset, http_get_dataset_names
 from utility.http.external_images_request import http_get_external_image_list, http_get_extract_image_list, http_get_external_dataset_list, http_get_extract_dataset_list
-API_URL="http://192.168.3.1:8111"
+API_URL = "http://192.168.3.1:8111"
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -35,15 +36,14 @@ def save_data_to_minio(minio_client, bucket, data_path, data):
     minio_client.put_object(bucket, data_path, data_buffer, len(data_buffer.getvalue()))
 
 def get_dataset_list(bucket: str):
-    datasets=[]
-    
-    if bucket == "external" or bucket == "extracts":
-        datasets= http_get_extract_dataset_list()
-    else:
-        datasets= http_get_dataset_names()
-    
-    return datasets
+    datasets = []
 
+    if bucket == "external" or bucket == "extracts":
+        datasets = http_get_extract_dataset_list()
+    else:
+        datasets = http_get_dataset_names()
+
+    return datasets
 
 class ClipBatchCaculation:
     def __init__(self,
@@ -52,38 +52,39 @@ class ClipBatchCaculation:
                  dataset,
                  device,
                  batch_size=10000):
-        
+
         # parameters
-        self.minio_client= minio_client
-        self.bucket= bucket
+        self.minio_client = minio_client
+        self.bucket = bucket
         self.dataset = dataset
-        self.device= device
-        self.batch_size= batch_size
+        self.device = device
+        self.batch_size = batch_size
 
     def load_file_paths(self):
         print("Loading paths for each clip vector")
 
         if self.bucket == "datasets":
-            image_data = http_get_completed_job_by_dataset(dataset= self.dataset)
+            image_data = http_get_completed_job_by_dataset(dataset=self.dataset)
         elif self.bucket == "external":
-            image_data = http_get_external_image_list(dataset= self.dataset)
+            image_data = http_get_external_image_list(dataset=self.dataset)
         elif self.bucket == "extracts":
-            image_data = http_get_extract_image_list(dataset= self.dataset)
+            image_data = http_get_extract_image_list(dataset=self.dataset)
 
-        file_paths= [image['file_path'] for image in image_data]
-        image_hashes= [image['image_hash'] for image in image_data]
-        uuids= [image['uuid'] for image in image_data]
+        file_paths = [image['file_path'] for image in image_data]
+        image_hashes = [image['image_hash'] for image in image_data]
+        uuids = [image['uuid'] for image in image_data]
+        image_uuids = [Uuid64.from_mongo_value(image['image_uuid']).to_formatted_str() for image in image_data]
 
-        return file_paths, image_hashes, uuids
-    
+        return file_paths, image_hashes, uuids, image_uuids
+
     def load_clip_vectors(self):
         # loading file paths and uuids of all jobs in the dataset
-        file_paths, image_hashes, uuids= self.load_file_paths()
+        file_paths, image_hashes, uuids, image_uuids = self.load_file_paths()
 
         print(f"Loading clip vectors for the {self.bucket}/{self.dataset} dataset")
-        clip_batch= []
-        batch_num= 1
-        for file_path, uuid, image_hash in tqdm(zip(file_paths, uuids, image_hashes)):
+        clip_batch = []
+        batch_num = 1
+        for file_path, uuid, image_uuid, image_hash in tqdm(zip(file_paths, uuids, image_uuids, image_hashes)):
             try:
                 bucket_name, input_file_path = separate_bucket_and_file_path(file_path)
                 file_path = os.path.splitext(input_file_path)[0]
@@ -93,7 +94,13 @@ class ClipBatchCaculation:
                 features_data = cmd.get_file_from_minio(self.minio_client, self.bucket, output_clip_path)
                 features_vector = msgpack.unpackb(features_data.data)["clip-feature-vector"]
 
-                clip_batch.append({"uuid": uuid, "image_hash": image_hash, "clip_vector": features_vector})
+                # Insert image_uuid right after uuid in the clip batch
+                clip_batch.append({
+                    "uuid": uuid,
+                    "image_uuid": image_uuid,  # Add the formatted image_uuid here
+                    "image_hash": image_hash,
+                    "clip_vector": features_vector
+                })
 
                 if len(clip_batch) == self.batch_size:
                     print(f"Storing a batch")
@@ -102,12 +109,12 @@ class ClipBatchCaculation:
                     data_path = output_folder + "_clip_data.msgpack"
                     # Save the new data directly as the start of a new batch
                     save_data_to_minio(self.minio_client, self.bucket, data_path, clip_batch)
-                    batch_num+=1
+                    batch_num += 1
                     clip_batch = []
 
             except Exception as e:
-                print(f"An error occured {e}")
-        
+                print(f"An error occurred {e}")
+
         if len(clip_batch) > 0:
             print(f"Storing a batch")
 
@@ -115,18 +122,16 @@ class ClipBatchCaculation:
             data_path = output_folder + "_clip_data.msgpack"
             # Save the new data directly as the start of a new batch
             save_data_to_minio(self.minio_client, self.bucket, data_path, clip_batch)
-            batch_num+=1
+            batch_num += 1
             clip_batch = []
 
-    
-
 def main():
-    args= parse_args()
+    args = parse_args()
 
     # get minio client
     minio_client = cmd.get_minio_client(minio_access_key=args.minio_access_key,
-                                            minio_secret_key=args.minio_secret_key)
-    
+                                        minio_secret_key=args.minio_secret_key)
+
     # get device
     if torch.cuda.is_available():
         device = 'cuda'
@@ -135,43 +140,41 @@ def main():
     device = torch.device(device)
 
     if args.dataset == "all":
-
-        dataset_names= get_dataset_list(bucket= args.bucket)
+        dataset_names = get_dataset_list(bucket=args.bucket)
         print(dataset_names)
 
         for dataset in dataset_names:
             # initialize image extraction pipeline
-            pipeline= ClipBatchCaculation(minio_client= minio_client,
-                                        device=device,
-                                        bucket= args.bucket,
-                                        dataset=dataset['dataset_name'],
-                                        batch_size= args.batch_size)
+            pipeline = ClipBatchCaculation(minio_client=minio_client,
+                                           device=device,
+                                           bucket=args.bucket,
+                                           dataset=dataset['dataset_name'],
+                                           batch_size=args.batch_size)
 
             pipeline.load_clip_vectors()
 
     elif args.dataset == "all_games":
-
-        games= external_images_request.http_get_video_game_list()
+        games = external_images_request.http_get_video_game_list()
 
         print(f"list of games: {games}")
 
         for game in games:
             dataset = game["title"]
             # initialize image extraction pipeline
-            pipeline= ClipBatchCaculation(minio_client= minio_client,
-                                        device=device,
-                                        bucket= args.bucket,
-                                        dataset=dataset,
-                                        batch_size= args.batch_size)
+            pipeline = ClipBatchCaculation(minio_client=minio_client,
+                                           device=device,
+                                           bucket=args.bucket,
+                                           dataset=dataset,
+                                           batch_size=args.batch_size)
 
             pipeline.load_clip_vectors()
     else:
         # initialize image extraction pipeline
-        pipeline= ClipBatchCaculation(minio_client= minio_client,
-                                    device=device,
-                                    bucket= args.bucket,
-                                    dataset=args.dataset,
-                                    batch_size= args.batch_size)
+        pipeline = ClipBatchCaculation(minio_client=minio_client,
+                                       device=device,
+                                       bucket=args.bucket,
+                                       dataset=args.dataset,
+                                       batch_size=args.batch_size)
 
         pipeline.load_clip_vectors()
 
