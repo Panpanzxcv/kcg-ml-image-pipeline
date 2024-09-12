@@ -217,6 +217,9 @@ class ImageExtractionPipeline:
          # Initialize a mask to keep track of which images pass any topic model condition
         combined_mask = torch.zeros(len(images), dtype=torch.bool)
 
+        # Also initialize a list to keep track of the highest classifier score for each image
+        highest_scores = torch.full((len(images),), -float('inf'))
+
         for tag, model in tqdm(self.topic_models.items()):
             with torch.no_grad():
                 classifier_scores = model.classify(clip_vectors).squeeze()
@@ -226,6 +229,12 @@ class ImageExtractionPipeline:
 
             # Update the combined mask to keep images that satisfy any condition
             combined_mask |= mask
+
+            # Update highest scores and track the best model for each image
+            for idx, score in enumerate(classifier_scores):
+                if score > highest_scores[idx]:
+                    highest_scores[idx] = score
+                    images[idx]['relevance_model'] = model
 
         # Apply the combined mask to filter images and clip_vectors
         images = [image for image, keep in zip(images, combined_mask) if keep]
@@ -335,7 +344,7 @@ class ImageExtractionPipeline:
     def extract_images(self):
         print("loading external dataset images..........")
         try:
-            external_images= external_images_request.http_get_external_dataset_in_batches(dataset=self.dataset, batch_size=100000)
+            external_images= external_images_request.http_get_external_dataset_in_batches_without_extracts(dataset=self.dataset, batch_size=100000)
         except Exception as e:
             raise Exception(f"An error occured when querying the external image dataset: {e}.")
         
