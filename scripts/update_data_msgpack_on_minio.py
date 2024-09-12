@@ -49,6 +49,11 @@ def get_collection(bucket_name):
 def update_msgpack_data(data, bucket_collection):
     print(f"Updating msgpack data...")
     for entry in data:
+        # Skip entry if it already has an image_uuid
+        if "image_uuid" in entry:
+            print(f"Skipping entry with image_hash {entry.get('image_hash')}, as it already has image_uuid.")
+            continue
+        
         uuid_value = entry.get("uuid")
         image_hash = entry.get("image_hash")
         clip_vector = entry.get("clip_vector")
@@ -130,18 +135,34 @@ def list_datasets(bucket_name):
     print(datasets)    
     return datasets
 
-# Process selected datasets
+# Function to list all msgpack files in a dataset's clip_vectors folder
+def list_msgpack_files(bucket_name, dataset):
+    msgpack_files = []
+    prefix = f"{dataset}/clip_vectors/"
+    
+    # List objects inside the clip_vectors folder
+    objects = minio_client.list_objects(bucket_name, prefix=prefix, recursive=True)
+    
+    for obj in objects:
+        if obj.object_name.endswith(".msgpack"):
+            msgpack_files.append(obj.object_name)
+    
+    return msgpack_files
+
+# Process selected datasets and all msgpack files in each dataset
 def process_selected_datasets():
     bucket_name = 'extracts'
     datasets = list_datasets(bucket_name)
     for dataset in datasets:
-        # Build the path to the specific clip_vectors msgpack file
-        file_path = f"{dataset}/clip_vectors/0001_clip_data.msgpack"
-        try:
-            print(f"Processing dataset: {file_path}")
-            process_msgpack(bucket_name, file_path)
-        except Exception as e:
-            print(f"Error processing {file_path}: {e}")
+        # List all msgpack files in the dataset's clip_vectors folder
+        msgpack_files = list_msgpack_files(bucket_name, dataset)
+        
+        for file_path in msgpack_files:
+            try:
+                print(f"Processing dataset: {file_path}")
+                process_msgpack(bucket_name, file_path)
+            except Exception as e:
+                print(f"Error processing {file_path}: {e}")
 
 # Example usage: Process specific datasets from external bucket
 process_selected_datasets()

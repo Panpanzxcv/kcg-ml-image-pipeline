@@ -73,12 +73,7 @@ class ClipBatchCaculation:
         file_paths = [image['file_path'] for image in image_data]
         image_hashes = [image['image_hash'] for image in image_data]
         uuids = [image['uuid'] for image in image_data]
-
-        # Only format image_uuid for the 'external' bucket, otherwise use it as-is
-        if self.bucket == "external":
-            image_uuids = [Uuid64.from_mongo_value(image['image_uuid']).to_formatted_str() for image in image_data]
-        else:  # For 'extracts' bucket, use the image_uuid as it is
-            image_uuids = [image['image_uuid'] for image in image_data]
+        image_uuids = [Uuid64.from_mongo_value(image['image_uuid']).to_formatted_str() for image in image_data]
 
         return file_paths, image_hashes, uuids, image_uuids
 
@@ -102,7 +97,7 @@ class ClipBatchCaculation:
                 # Insert image_uuid right after uuid in the clip batch
                 clip_batch.append({
                     "uuid": uuid,
-                    "image_uuid": image_uuid,  # Add the formatted or raw image_uuid here based on the bucket
+                    "image_uuid": image_uuid,  # Add the formatted image_uuid here
                     "image_hash": image_hash,
                     "clip_vector": features_vector
                 })
