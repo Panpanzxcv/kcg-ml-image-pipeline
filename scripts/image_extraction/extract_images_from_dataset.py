@@ -119,7 +119,7 @@ class ImageExtractionPipeline:
             tags= request.http_get_tag_list()
             tag_names= [tag['tag_string'] for tag in tags]
             classifier_model= None
-            target_tags=["game", "perspective"]
+            target_tags=["game", "perspective", "environmental"]
 
             for tag in tag_names:
                 if tag.startswith("defect"):
