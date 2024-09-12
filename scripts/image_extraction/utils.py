@@ -34,7 +34,6 @@ def extract_square_images(minio_client: Minio,
     relevance_models = [image['relevance_model'] for image in external_image_data]
     
     extracted_images = []
-    all_patches = []
 
     # Step 1: Generate patches for each image
     for i, path in enumerate(tqdm(file_paths)):
