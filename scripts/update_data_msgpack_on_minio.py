@@ -86,7 +86,7 @@ def save_orphaned_hashes_to_csv(file_path):
             writer.writerow([image_hash])
     print(f"Orphaned image_hashes saved.")
 
-# Process msgpack files in a bucket
+# Process msgpack files in a specific dataset
 def process_msgpack(bucket_name, file_path):
     print(f"Processing msgpack file: {file_path} in bucket: {bucket_name}")
     
@@ -120,7 +120,28 @@ def process_msgpack(bucket_name, file_path):
     # Save orphaned image_hashes to CSV
     save_orphaned_hashes_to_csv("orphaned_image_hashes.csv")
 
-# Example usage
-bucket_name = 'external'  # or 'extract'
-file_path = 'trappist/clip_vectors/0001_clip_data.msgpack'  # Replace with the actual path
-process_msgpack(bucket_name, file_path)
+# List all top-level datasets in the external bucket
+def list_datasets(bucket_name):
+    datasets = set()  # Use a set to avoid duplicates
+    objects = minio_client.list_objects(bucket_name, recursive=False)
+    for obj in objects:
+        top_level_folder = obj.object_name.split('/')[0]
+        datasets.add(top_level_folder)
+    print(datasets)    
+    return datasets
+
+# Process selected datasets
+def process_selected_datasets():
+    bucket_name = 'external'
+    datasets = list_datasets(bucket_name)
+    for dataset in datasets:
+        # Build the path to the specific clip_vectors msgpack file
+        file_path = f"{dataset}/clip_vectors/0001_clip_data.msgpack"
+        try:
+            print(f"Processing dataset: {file_path}")
+            process_msgpack(bucket_name, file_path)
+        except Exception as e:
+            print(f"Error processing {file_path}: {e}")
+
+# Example usage: Process specific datasets from external bucket
+process_selected_datasets()
