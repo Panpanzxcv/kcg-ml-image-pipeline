@@ -1178,7 +1178,7 @@ async def list_external_images_without_extracts(
 
         # Collect the metadata for the images that match the query
         images_metadata = []
-        async for image in images_cursor:
+        for image in images_cursor:
             image.pop('_id', None)  # Remove the auto-generated field
             images_metadata.append(image)
 
