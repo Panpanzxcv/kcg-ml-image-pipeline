@@ -981,6 +981,7 @@ async def list_external_images_v1(
             http_status_code=500
         )
 
+
 @router.get("/external-images/list-images-v2",
             status_code=200,
             tags=["external-images"],
@@ -1068,6 +1069,124 @@ async def list_external_images_v1(
             response_data={"images": images_metadata},
             http_status_code=200
         )
+    except Exception as e:
+        return response_handler.create_error_response_v1(
+            error_code=ErrorCode.OTHER_ERROR,
+            error_string=str(e),
+            http_status_code=500
+        )
+
+
+@router.get("/external-images/list-images-without-extracts",
+            status_code=200,
+            tags=["external-images"],
+            response_model=StandardSuccessResponseV1[ListExternalImageDataV1],
+            description="List external images with optional filtering, pagination, and excluding images with extracts",
+            responses=ApiResponseHandlerV1.listErrors([400, 422, 500]))
+async def list_external_images_without_extracts(
+    request: Request,
+    dataset: Optional[str] = Query(None, description="Dataset to filter the results by"),
+    limit: int = Query(20, description="Limit on the number of results returned"),
+    offset: int = Query(0, description="Offset for the results to be returned"),
+    start_date: Optional[str] = Query(None, description="Start date for filtering results (YYYY-MM-DDTHH:MM:SS)"),
+    end_date: Optional[str] = Query(None, description="End date for filtering results (YYYY-MM-DDTHH:MM:SS)"),
+    order: str = Query("desc", description="Order in which the data should be returned. 'asc' for oldest first, 'desc' for newest first"),
+    time_interval: Optional[int] = Query(None, description="Time interval in minutes or hours"),
+    time_unit: str = Query("minutes", description="Time unit, either 'minutes' or 'hours'")
+):
+    response_handler = await ApiResponseHandlerV1.createInstance(request)
+
+    try:
+        # Calculate the time threshold based on the current time and the specified interval
+        if time_interval is not None:
+            current_time = datetime.utcnow()
+            if time_unit == "minutes":
+                threshold_time = current_time - timedelta(minutes=time_interval)
+            elif time_unit == "hours":
+                threshold_time = current_time - timedelta(hours=time_interval)
+            else:
+                return response_handler.create_error_response_v1(
+                    error_code=ErrorCode.INVALID_PARAMS,
+                    error_string="Invalid time unit. Use 'minutes' or 'hours'.",
+                    http_status_code=400)
+
+            # Convert threshold_time to a string in ISO format
+            threshold_time_str = threshold_time.isoformat(timespec='milliseconds')
+        else:
+            threshold_time_str = None
+
+        # Validate start_date and end_date
+        if start_date:
+            validated_start_date = validate_date_format(start_date)
+            if validated_start_date is None:
+                return response_handler.create_error_response_v1(
+                    error_code=ErrorCode.INVALID_PARAMS,
+                    error_string="Invalid start_date format. Expected format: YYYY-MM-DDTHH:MM:SS",
+                    http_status_code=400
+                )
+        if end_date:
+            validated_end_date = validate_date_format(end_date)
+            if validated_end_date is None:
+                return response_handler.create_error_response_v1(
+                    error_code=ErrorCode.INVALID_PARAMS,
+                    error_string="Invalid end_date format. Expected format: YYYY-MM-DDTHH:MM:SS",
+                    http_status_code=400
+                )
+
+        # Build the aggregation pipeline
+        aggregation_pipeline = []
+        match_stage = {}
+
+        # Add dataset filter if specified
+        if dataset:
+            match_stage['dataset'] = dataset
+
+        # Add date filters to match_stage
+        if start_date and end_date:
+            match_stage["upload_date"] = {"$gte": validated_start_date, "$lte": validated_end_date}
+        elif start_date:
+            match_stage["upload_date"] = {"$gte": validated_start_date}
+        elif end_date:
+            match_stage["upload_date"] = {"$lte": validated_end_date}
+        elif threshold_time_str:
+            match_stage["upload_date"] = {"$gte": threshold_time_str}
+
+        if match_stage:
+            aggregation_pipeline.append({"$match": match_stage})
+
+        # Add $lookup to find images without corresponding extracts
+        aggregation_pipeline.append({
+            "$lookup": {
+                "from": "extracts",
+                "localField": "image_hash", 
+                "foreignField": "source_image_hash",
+                "as": "extracts"
+            }
+        })
+        
+        # Filter to include only images with no extracts
+        aggregation_pipeline.append({"$match": {"extracts": {"$size": 0}}})
+
+        # Apply pagination and sorting
+        sort_order = -1 if order == "desc" else 1
+        aggregation_pipeline.append({"$sort": {"upload_date": sort_order}})
+        aggregation_pipeline.append({"$skip": offset})
+        aggregation_pipeline.append({"$limit": limit})
+
+        # Query the collection using aggregation
+        images_cursor = request.app.external_images_collection.aggregate(aggregation_pipeline)
+
+        # Collect the metadata for the images that match the query
+        images_metadata = []
+        async for image in images_cursor:
+            image.pop('_id', None)  # Remove the auto-generated field
+            images_metadata.append(image)
+
+        return response_handler.create_success_response_v1(
+            response_data={"images": images_metadata},
+            http_status_code=200
+        )
+
     except Exception as e:
         return response_handler.create_error_response_v1(
             error_code=ErrorCode.OTHER_ERROR,
