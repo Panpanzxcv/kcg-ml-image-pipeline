@@ -36,7 +36,7 @@ def get_image_uuid(image_hash, collection):
 
 # Function to determine the correct collection based on the bucket name
 def get_collection(bucket_name):
-    if bucket_name == 'extract':
+    if bucket_name == 'extracts':
         print(f"Using collection: extracts for bucket: {bucket_name}")
         return db['extracts']  # Collection for 'extract' bucket
     elif bucket_name == 'external':
