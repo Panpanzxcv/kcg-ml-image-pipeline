@@ -386,7 +386,7 @@ class ImageExtractionPipeline:
             filtered_batch= self.filter_external_images(images_batch, clip_vectors)
 
             # extracting the 512*512 image patches
-            extracts= extract_square_images(self.minio_client, filtered_batch, self.target_size)
+            extracts= extract_square_images(self.minio_client, self.clip, filtered_batch, self.target_size)
 
             # upload the extracts to minio and mongoDB
             extract_data= self.upload_extracts(external_images= filtered_batch,
