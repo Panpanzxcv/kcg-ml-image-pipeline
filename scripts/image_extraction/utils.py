@@ -29,7 +29,7 @@ def extract_square_images(minio_client: Minio,
                           target_size: int = 512,
                           num_patches: int = 5):
     
-    print("Extracting images and selecting highest scoring patches.........")
+    print("Extracting 512*512 images.........")
     file_paths = [image['file_path'] for image in external_image_data]
     relevance_models = [image['relevance_model'] for image in external_image_data]
     
@@ -58,40 +58,37 @@ def extract_square_images(minio_client: Minio,
                 patch = VF.resized_crop(img, *params, size=target_size, interpolation=VF.InterpolationMode.BICUBIC, antialias=True)
                 patches.append(patch)
         else:
-            patches = [img] * num_patches  # if already the correct size, just replicate
-        
-        # Convert patches to byte form and store
-        for patch in patches:
-            image_data = BytesIO()
-            patch.save(image_data, format='JPEG')
-            image_data.seek(0)  # Reset buffer position to the beginning
-            all_patches.append(patch)
-            extracted_images.append({
-                "image": patch,
-                "image_data": image_data,
-                "relevance_model": relevance_models[i]
-            })
+            patches = [img]
+
+        extracted_images.append({
+            "images": patches,
+            "relevance_model": relevance_models[i]
+        })
     
-    # Step 2: Run classifier to determine best patchs
-    for i, image_info in enumerate(extracted_images):
+    # Step 2: Run classifier to determine best patches
+    print("Selecting the best patch for each image")
+    for i, image_info in enumerate(tqdm(extracted_images)):
         relevance_model = image_info['relevance_model']
 
-        patch_indices = list(range(i * num_patches, (i + 1) * num_patches))
-        patches = all_patches[patch_indices]
-        patches_clip_vectors = clip_model.get_image_features(patches) 
+        patches= image_info['images']
+        patches_clip_vectors = clip_model.get_image_features(patches).to(dtype=torch.float32) 
 
         with torch.no_grad():
             classifier_scores = relevance_model.classify(patches_clip_vectors).squeeze()
 
         # Step 3: Select the patch with the highest score
         highest_scoring_idx = classifier_scores.argmax().item()
-        highest_scoring_patch = extracted_images[i * num_patches + highest_scoring_idx]['image']
-        highest_scoring_image_data = extracted_images[i * num_patches + highest_scoring_idx]['image_data']
+        highest_scoring_patch = patches[highest_scoring_idx]
+        highest_scoring_clip_vector= patches_clip_vectors[highest_scoring_idx]
+        highest_scoring_image_data = BytesIO()
+        highest_scoring_patch.save(highest_scoring_image_data, format='JPEG')
+        highest_scoring_image_data.seek(0)
 
         # Store the highest-scoring patch in the final result
         extracted_images[i] = {
             "image": highest_scoring_patch,
             "image_data": highest_scoring_image_data,
+            "clip_vector": highest_scoring_clip_vector
         }
     
     return extracted_images

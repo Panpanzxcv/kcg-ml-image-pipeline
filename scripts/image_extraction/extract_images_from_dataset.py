@@ -255,10 +255,7 @@ class ImageExtractionPipeline:
         for source_image, extract in tqdm(zip(external_images, extracted_images)):
             image = extract["image"]
             image_data = extract["image_data"]
-
-            # get the clip vector from the image
-            with torch.no_grad():
-                clip_vector= self.clip.get_image_features(image).to(dtype=torch.float32)
+            clip_vector= extract["clip_vector"]
 
             # calculate vae latent
             pixel_values = np.array(image).astype(np.float32) / 127.5 - 1  # Normalize
@@ -271,7 +268,6 @@ class ImageExtractionPipeline:
             pixel_values.cpu()
             del pixel_values
             torch.cuda.empty_cache()
-
 
             data={
                 "image_hash" : hashlib.md5(image_data.getvalue()).hexdigest(),
