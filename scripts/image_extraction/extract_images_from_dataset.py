@@ -119,18 +119,18 @@ class ImageExtractionPipeline:
             tags= request.http_get_tag_list()
             tag_names= [tag['tag_string'] for tag in tags]
             classifier_model= None
-            target_tags=["game", "perspective", "environmental"]
+            target_tags=["game", "perspective"]
 
             for tag in tag_names:
-                if tag.startswith("defect"):
+                if tag.startswith("defect-"):
                     classifier_model= self.get_classifier_model(tag)
                     if classifier_model:
                         self.defect_models[tag]= classifier_model
-                elif tag.startswith("irrelevant"):
+                elif tag.startswith("irrelevant-"):
                     classifier_model= self.get_classifier_model(tag)
                     if classifier_model:
                         self.irrelevant_image_models[tag] = classifier_model
-                elif any(tag.startswith(prefix) for prefix in target_tags):
+                elif any(tag.startswith(f"{prefix}-") for prefix in target_tags):
                     classifier_model= self.get_classifier_model(tag)
                     if classifier_model:
                         self.topic_models[tag]= classifier_model
