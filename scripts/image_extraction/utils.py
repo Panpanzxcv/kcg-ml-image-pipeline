@@ -75,7 +75,6 @@ def extract_square_images(minio_client: Minio,
             patches_clip_vectors.append(clip_model.get_image_features(patch).squeeze())
          
         patches_clip_vectors= torch.stack(patches_clip_vectors).to(dtype=torch.float32)
-        print("shape of vectors:", patches_clip_vectors.shape)
         with torch.no_grad():
             classifier_scores = relevance_model.classify(patches_clip_vectors).squeeze()
 
