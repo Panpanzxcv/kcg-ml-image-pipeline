@@ -12,7 +12,6 @@ sys.path.insert(0, os.getcwd())
 from utility.http import external_images_request
 from utility.minio import cmd
 from utility.path import separate_bucket_and_file_path
-from orchestration.api.utils.uuid64 import Uuid64
 from kandinsky.models.clip_image_encoder.clip_image_encoder import KandinskyCLIPImageEncoder
 from utility.http.request import http_get_completed_job_by_dataset, http_get_dataset_names
 from utility.http.external_images_request import http_get_external_image_list, http_get_extract_image_list, http_get_external_dataset_list, http_get_extract_dataset_list
@@ -73,7 +72,7 @@ class ClipBatchCaculation:
         file_paths = [image['file_path'] for image in image_data]
         image_hashes = [image['image_hash'] for image in image_data]
         uuids = [image['uuid'] for image in image_data]
-        image_uuids = [Uuid64.from_mongo_value(image['image_uuid']).to_formatted_str() for image in image_data]
+        image_uuids = [image['image_uuid'] for image in image_data]  # Directly use image_uuid without conversion
 
         return file_paths, image_hashes, uuids, image_uuids
 
@@ -97,7 +96,7 @@ class ClipBatchCaculation:
                 # Insert image_uuid right after uuid in the clip batch
                 clip_batch.append({
                     "uuid": uuid,
-                    "image_uuid": image_uuid,  # Add the formatted image_uuid here
+                    "image_uuid": image_uuid,  # Directly use image_uuid here
                     "image_hash": image_hash,
                     "clip_vector": features_vector
                 })

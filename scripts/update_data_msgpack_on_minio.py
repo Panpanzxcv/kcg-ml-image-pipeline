@@ -151,7 +151,7 @@ def list_msgpack_files(bucket_name, dataset):
 
 # Process selected datasets and all msgpack files in each dataset
 def process_selected_datasets():
-    bucket_name = 'extracts'
+    bucket_name = 'external'
     datasets = list_datasets(bucket_name)
     for dataset in datasets:
         # List all msgpack files in the dataset's clip_vectors folder
