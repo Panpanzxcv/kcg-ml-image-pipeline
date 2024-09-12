@@ -132,7 +132,7 @@ def list_datasets(bucket_name):
 
 # Process selected datasets
 def process_selected_datasets():
-    bucket_name = 'external'
+    bucket_name = 'extracts'
     datasets = list_datasets(bucket_name)
     for dataset in datasets:
         # Build the path to the specific clip_vectors msgpack file
