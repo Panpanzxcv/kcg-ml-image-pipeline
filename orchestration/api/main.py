@@ -306,6 +306,13 @@ def startup_db_client():
     ]
     create_index_if_not_exists(app.external_images_collection ,external_images_creation_time_index, 'external_images_creation_time_index')
 
+    external_images_compound_index = [
+    ('dataset', pymongo.ASCENDING),
+    ('upload_date', pymongo.ASCENDING),
+    ('image_hash', pymongo.ASCENDING)
+    ]
+    create_index_if_not_exists(app.external_images_collection, external_images_compound_index, 'external_images_compound_index')
+
     app.extracts_collection = app.mongodb_db["extracts"]
     
     extracts_dataset_index=[
@@ -327,6 +334,12 @@ def startup_db_client():
     ('old_uuid_string', pymongo.ASCENDING)
     ]
     create_index_if_not_exists(app.extracts_collection ,extracts_old_uuid_index, 'extracts_old_uuid_index')
+
+    extracts_source_hash_index = [
+    ('source_image_hash', pymongo.ASCENDING),
+    ('upload_date', pymongo.ASCENDING)
+    ]
+    create_index_if_not_exists(app.extracts_collection, extracts_source_hash_index, 'extracts_source_hash_index')
 
     app.ingress_video_collection = app.mongodb_db["ingress_videos"]
     app.external_dataset_sequential_id = app.mongodb_db["external_dataset_sequential_id"]
