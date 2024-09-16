@@ -19,7 +19,7 @@ def list_datasets(bucket_name):
 
 # Print datasets that do not contain the clip_vectors folder
 def print_datasets_without_clip_vectors():
-    bucket_name = 'extracts'
+    bucket_name = 'external'
     datasets = list_datasets(bucket_name)
     datasets_without_clip_vectors = []
 

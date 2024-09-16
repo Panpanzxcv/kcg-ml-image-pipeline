@@ -32,7 +32,7 @@ documents = collection.find()
 for doc in documents:
     try:
         # Define file name based on 'tag_id' and 'image_hash'
-        file_name = f"{doc['tag_id']}-{doc['image_hash']}.json"
+        file_name = f"{doc['tag_id']}-{doc['tag_type']}-{doc['image_hash']}.json"
 
         # Convert the MongoDB document to JSON format
         json_data = json.dumps(doc, default=str)
