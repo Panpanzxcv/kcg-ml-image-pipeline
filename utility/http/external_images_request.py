@@ -73,6 +73,42 @@ def http_get_external_dataset_in_batches(dataset: str, batch_size: int):
         print(f"Loaded {offset} images")
     
     return external_images
+
+def http_get_external_dataset_in_batches_without_extracts(dataset: str, batch_size: int):
+    external_images=[]
+    
+    limit=batch_size
+    offset=0
+
+    while True:
+        endpoint_url= "/external-images/list-images-without-extracts?dataset={}&limit={}&offset={}&order=asc".format(dataset, limit, offset)
+
+        url = SERVER_ADDRESS + endpoint_url
+        try:
+            response = requests.get(url)
+            
+            if response.status_code == 200:
+                data_json = response.json()
+                image_batch= data_json['response']['images']
+                num_images= len(image_batch)
+
+                if num_images>0: 
+                    external_images.extend(image_batch)
+                else:
+                    break
+
+            else:
+                break
+
+        except Exception as e:
+            print('request exception ', e)
+            break
+
+        offset += num_images
+
+        print(f"Loaded {offset} images")
+    
+    return external_images
         
 
 def http_get_external_image_list_without_extracts(dataset, size=None):
