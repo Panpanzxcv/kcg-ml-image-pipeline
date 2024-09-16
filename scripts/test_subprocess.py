@@ -10,7 +10,7 @@ def run_script(dataset_name):
         '--minio-access-key', 'v048BpXpWrsVIHUfdAix',
         '--minio-secret-key', '4TFS20qkxVuX2HaC8ezAgG7GaDlVI1TqSPs0BKyu',
         '--bucket', 'external',
-        '--dataset', dataset_name  # Dataset name
+        '--dataset', dataset_name  # Dataset name without extra quotes
     ]
     
     try:
@@ -43,5 +43,4 @@ datasets = [
 
 # Run the script for each dataset
 for dataset in datasets:
-    # Add quotes to handle spaces or special characters
-    run_script(f'"{dataset}"')
+    run_script(dataset)
