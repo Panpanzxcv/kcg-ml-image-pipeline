@@ -167,7 +167,7 @@ def remove_tag_deprecated(request: Request, tag_id: int):
              status_code=201,
              tags=["deprecated3"], 
              description="changed with /tags/add-tag-to-image-v2",
-             response_model=StandardSuccessResponseV1[ImageTag], 
+             response_model=StandardSuccessResponseV1[ImageTagResponse], 
              responses=ApiResponseHandlerV1.listErrors([400, 422, 500]))
 def add_tag_to_image(request: Request, tag_id: int, file_hash: str, tag_type: int, user_who_created: str):
     response_handler = ApiResponseHandlerV1(request)
@@ -184,7 +184,7 @@ def add_tag_to_image(request: Request, tag_id: int, file_hash: str, tag_type: in
 
         image = request.app.completed_jobs_collection.find_one(
             {'task_output_file_dict.output_file_hash': file_hash},
-            {"task_output_file_dict.output_file_path": 1, "image_uuid": 1}  # Retrieve image_uuid along with the file path
+            {"task_output_file_dict.output_file_path": 1}  
         )
         if not image:
             return response_handler.create_error_response_v1(
@@ -194,7 +194,6 @@ def add_tag_to_image(request: Request, tag_id: int, file_hash: str, tag_type: in
             )
 
         file_path = image.get("task_output_file_dict", {}).get("output_file_path", "")
-        image_uuid = image.get("image_uuid", None)  # Get the image_uuid if available
 
         # Check if the tag is already associated with the image
         existing_image_tag = request.app.image_tags_collection.find_one({
@@ -215,7 +214,6 @@ def add_tag_to_image(request: Request, tag_id: int, file_hash: str, tag_type: in
             "tag_id": tag_id,
             "file_path": file_path,  
             "image_hash": file_hash,
-            "image_uuid": image_uuid,  # Include the image_uuid field
             "tag_type": tag_type,
             "image_source": generated_image,
             "user_who_created": user_who_created,
@@ -262,15 +260,15 @@ def add_tag_to_image_v2(request: Request, tag_id: int, file_hash: str, tag_type:
         if image_source == "generated_image":
             collection = request.app.completed_jobs_collection
             query = {'task_output_file_dict.output_file_hash': file_hash}
-            projection = {"task_output_file_dict.output_file_path": 1, "image_uuid": 1}  # Include image_uuid in projection
+            projection = {"task_output_file_dict.output_file_path": 1}  
         elif image_source == "extract_image":
             collection = request.app.extracts_collection
             query = {'image_hash': file_hash}
-            projection = {"file_path": 1, "image_uuid": 1}  # Include image_uuid in projection
+            projection = {"file_path": 1} 
         elif image_source == "external_image":
             collection = request.app.external_images_collection
             query = {'image_hash': file_hash}
-            projection = {"file_path": 1, "image_uuid": 1}  # Include image_uuid in projection
+            projection = {"file_path": 1} 
         else:
             return response_handler.create_error_response_v1(
                 error_code=ErrorCode.INVALID_PARAMS,
@@ -287,7 +285,6 @@ def add_tag_to_image_v2(request: Request, tag_id: int, file_hash: str, tag_type:
             )
 
         file_path = image.get("task_output_file_dict", {}).get("output_file_path", "") if image_source == "generated_image" else image.get("file_path", "")
-        image_uuid = image.get("image_uuid", None)  # Get the image_uuid if available
 
         # Check if the tag is already associated with the image
         existing_image_tag = request.app.image_tags_collection.find_one({
@@ -308,7 +305,6 @@ def add_tag_to_image_v2(request: Request, tag_id: int, file_hash: str, tag_type:
             "tag_id": tag_id,
             "file_path": file_path,  
             "image_hash": file_hash,
-            "image_uuid": image_uuid,  # Include the image_uuid field
             "tag_type": tag_type,
             "image_source": image_source,
             "user_who_created": user_who_created,
