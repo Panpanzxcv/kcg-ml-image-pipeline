@@ -1,4 +1,5 @@
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import io
 import math
@@ -10,6 +11,7 @@ import numpy as np
 import torch
 from diffusers import VQModel
 from tqdm import tqdm
+import msgpack
 
 base_dir = "./"
 sys.path.insert(0, base_dir)
@@ -23,6 +25,7 @@ from kandinsky.models.clip_image_encoder.clip_image_encoder import KandinskyCLIP
 from scripts.image_extraction.utils import extract_square_images, save_latents_and_vectors, upload_extract_data
 from training_worker.classifiers.models.elm_regression import ELMRegression
 from kandinsky.model_paths import DECODER_MODEL_PATH
+from utility.path import separate_bucket_and_file_path
 
 
 def parse_args():
@@ -33,7 +36,7 @@ def parse_args():
     parser.add_argument('--dataset', type=str, help='Dataset to extract from')
     parser.add_argument('--min-quality-sigma', type=float, default=1, help='Minimum quality threshold')
     parser.add_argument('--min-classifier-score', type=float, default=0.7, help='Minimum classifier score threshold')
-    parser.add_argument('--defect-threshold', type=float, default=0.7, help='Minimum defect threshold')
+    parser.add_argument('--defect-threshold', type=float, default=0.6, help='Minimum defect threshold')
     parser.add_argument('--target-size', type=int, default=512, help='Target size of image extraction')
     parser.add_argument('--batch-size', type=int, default=10000, help='batch size for extraction')
     parser.add_argument('--file-batch-size', type=int, default=10000, help='Batch size for numpy file storage')
@@ -100,7 +103,6 @@ class ImageExtractionPipeline:
         self.device = torch.device(device)
 
         # models
-        self.quality_models= []
         self.topic_models= {}
         self.irrelevant_image_models= {}
         self.defect_models= {}
@@ -112,41 +114,23 @@ class ImageExtractionPipeline:
 
     def load_models(self):
         try:
-            print(f"Load all rank models")
-            rank_model_list = request.http_get_ranking_model_list()
-
-            for rank_info in rank_model_list:
-                ranking_model_type = rank_info["model_type"]
-                rank_id = rank_info["rank_id"]
-                print(rank_id)
-
-                if  ranking_model_type != "elm-v1" or rank_id not in [0,1,3]:
-                    print(rank_id)
-                    continue
-
-                rank_id = rank_info["rank_id"]
-                model_path = rank_info["model_path"]
-                rank_model= None
-
-                rank_model = load_scoring_model(self.minio_client, rank_id, model_path, self.device)
-                self.quality_models.append(rank_model)
-            
             # load topic and defect models
             print("loading the classifier models")
             tags= request.http_get_tag_list()
             tag_names= [tag['tag_string'] for tag in tags]
             classifier_model= None
+            target_tags=["game", "perspective"]
 
             for tag in tag_names:
-                if tag.startswith("defect"):
+                if tag.startswith("defect-"):
                     classifier_model= self.get_classifier_model(tag)
                     if classifier_model:
                         self.defect_models[tag]= classifier_model
-                elif tag.startswith("irrelevant"):
+                elif tag.startswith("irrelevant-"):
                     classifier_model= self.get_classifier_model(tag)
                     if classifier_model:
                         self.irrelevant_image_models[tag] = classifier_model
-                elif tag.startswith("game"):
+                elif any(tag.startswith(f"{prefix}-") for prefix in target_tags):
                     classifier_model= self.get_classifier_model(tag)
                     if classifier_model:
                         self.topic_models[tag]= classifier_model
@@ -196,108 +180,131 @@ class ImageExtractionPipeline:
         
         return clip_model
     
-    def is_filtered(self, clip_vector):
-        # check if the image is irrelevant
-        for tag, model in self.irrelevant_image_models.items():
-            with torch.no_grad():
-                classifier_score = model.classify(clip_vector).item()
-            if classifier_score >= self.defect_threshold:
-                return True
+    def filter_external_images(self, images, clip_vectors):
+        total_images = len(images)
 
-        # check if the image has any defects
-        for tag, model in self.defect_models.items():
+        print("Filtering irrelevant images")
+        for tag, model in tqdm(self.irrelevant_image_models.items()):
             with torch.no_grad():
-                classifier_score = model.classify(clip_vector).item()
-            if classifier_score >= self.defect_threshold:
-                return True
-
-        # check classifier scores
-        for tag, model in self.topic_models.items():
-            with torch.no_grad():
-                classifier_score = model.classify(clip_vector).item()
-            if classifier_score >= self.min_classifier_score:
-                return False
-        
-        # Check quality score
-        for model in self.quality_models:
-            with torch.no_grad():
-                clip_score = model.predict_clip(clip_vector).item()
-                score_mean= float(model.mean)
-                score_std= float(model.standard_deviation)
-                sigma_score = (clip_score - score_mean) / score_std
+                classifier_scores = model.classify(clip_vectors).squeeze()
             
-            if sigma_score >= self.min_quality_sigma:
-                return False
-        
-        return True
+            # Create a mask for filtering based on classifier scores
+            mask = (classifier_scores < 3) & (classifier_scores < self.defect_threshold)
 
-    def filter_extracts(self, external_images: list, extracted_images: list):
-        print("Filtering extracted images...........")
+            # Apply the mask to filter the images 
+            images = [image for image, keep in zip(images, mask) if keep]
+            clip_vectors = clip_vectors[mask]
+
+        print(f"{total_images - len(images)} images filtered as irrelevant")
+        total_images = len(images)
+
+        print("Filtering based on defects")
+        for tag, model in tqdm(self.defect_models.items()):
+            with torch.no_grad():
+                classifier_scores = model.classify(clip_vectors).squeeze()
+            
+            # Create a mask for filtering based on classifier scores
+            mask = (classifier_scores < 3) & (classifier_scores < self.defect_threshold)
+
+            # Apply the mask to filter images and clip_vectors
+            images = [image for image, keep in zip(images, mask) if keep]
+            clip_vectors = clip_vectors[mask]
+
+        print(f"{total_images - len(images)} images filtered as defective")
+        total_images = len(images)
+
+        print("Filtering for images with relevant content")
+         # Initialize a mask to keep track of which images pass any topic model condition
+        combined_mask = torch.zeros(len(images), dtype=torch.bool)
+
+        # Also initialize a list to keep track of the highest classifier score for each image
+        highest_scores = torch.full((len(images),), -float('inf'))
+
+        for tag, model in tqdm(self.topic_models.items()):
+            with torch.no_grad():
+                classifier_scores = model.classify(clip_vectors).squeeze()
+
+            # Create a mask for filtering based on classifier scores
+            mask = (classifier_scores >= self.min_classifier_score) & (classifier_scores < 3)
+
+            # Update the combined mask to keep images that satisfy any condition
+            combined_mask |= mask
+
+            # Update highest scores and track the best model for each image
+            for idx, score in enumerate(classifier_scores):
+                if score > highest_scores[idx]:
+                    highest_scores[idx] = score
+                    images[idx]['relevance_model'] = model
+
+        # Apply the combined mask to filter images and clip_vectors
+        images = [image for image, keep in zip(images, combined_mask) if keep]
+        clip_vectors = clip_vectors[combined_mask]
+
+        total_images = len(images)
+        print(f"{total_images} images were selected after filtering")
+
+        return images
+
+    def upload_extracts(self, external_images: list, extracted_images: list):
+        print("Uploading extracted images...........")
         extract_data=[]
         extraction_policy= "random_crop_resize"
 
         # filter the images based on
         index=0 
-        for extract in tqdm(extracted_images):
+        for source_image, extract in tqdm(zip(external_images, extracted_images)):
             image = extract["image"]
             image_data = extract["image_data"]
+            clip_vector= extract["clip_vector"]
 
-            # get the clip vector from the image
+            # calculate vae latent
+            pixel_values = np.array(image).astype(np.float32) / 127.5 - 1  # Normalize
+            pixel_values = np.transpose(pixel_values, [2, 0, 1])  # Correct channel order: [C, H, W]
+            pixel_values = torch.from_numpy(pixel_values).unsqueeze(0).to(device=self.device)  # Add batch dimension
+
             with torch.no_grad():
-                clip_vector= self.clip.get_image_features(image).to(dtype=torch.float32)
-            # filter the image if it's not useful
-            if not self.is_filtered(clip_vector):
-                # calculate vae latent
-                pixel_values = np.array(image).astype(np.float32) / 127.5 - 1  # Normalize
-                pixel_values = np.transpose(pixel_values, [2, 0, 1])  # Correct channel order: [C, H, W]
-                pixel_values = torch.from_numpy(pixel_values).unsqueeze(0).to(device=self.device)  # Add batch dimension
+                vae_latent = self.vae.encode(pixel_values).latents
 
-                with torch.no_grad():
-                    vae_latent = self.vae.encode(pixel_values).latents
+            pixel_values.cpu()
+            del pixel_values
+            torch.cuda.empty_cache()
 
-                pixel_values.cpu()
-                del pixel_values
-                torch.cuda.empty_cache()
+            data={
+                "image_hash" : hashlib.md5(image_data.getvalue()).hexdigest(),
+                "image_uuid": str(uuid.uuid4()),
+                "image": image,
+                "clip_vector": clip_vector,
+                "vae_latent" : vae_latent,
+                "source_image_hash": source_image["image_hash"],
+                "source_image_uuid": source_image["uuid"],
+                "extraction_policy": extraction_policy,
+                "dataset": source_image["dataset"]
+            }
 
-                # store data
-                source_image_data= external_images[index]
-                
-                data={
-                    "image_hash" : hashlib.md5(image_data.getvalue()).hexdigest(),
-                    "image_uuid": str(uuid.uuid4()),
-                    "image": image,
-                    "clip_vector": clip_vector,
-                    "vae_latent" : vae_latent,
-                    "source_image_hash": source_image_data["image_hash"],
-                    "source_image_uuid": source_image_data["uuid"],
-                    "extraction_policy": extraction_policy,
-                    "dataset": source_image_data["dataset"]
-                }
+            extract_data.append(data)
 
-                extract_data.append(data)
+            # spawn upload data thread
+            thread = threading.Thread(target=upload_extract_data, args=(self.minio_client, data,))
+            thread.start()
+            self.threads.append(thread)
 
-                # spawn upload data thread
-                thread = threading.Thread(target=upload_extract_data, args=(self.minio_client, data,))
+            self.clip_vectors.append(clip_vector)
+            self.vae_latents.append(vae_latent)
+            self.image_hashes.append(data["image_hash"])
+            
+            # check if batch size was reached
+            if len(self.clip_vectors) >= self.file_batch_size:
+                # save batch file
+                clip_vectors= self.clip_vectors.copy()
+                vae_latents= self.vae_latents.copy()
+
+                self.clip_vectors =[]
+                self.vae_latents =[]
+
+                thread = threading.Thread(target=save_latents_and_vectors, args=(self.minio_client, self.dataset, clip_vectors, vae_latents, self.image_hashes,))
                 thread.start()
                 self.threads.append(thread)
-
-                self.clip_vectors.append(clip_vector)
-                self.vae_latents.append(vae_latent)
-                self.image_hashes.append(data["image_hash"])
-                
-                # check if batch size was reached
-                if len(self.clip_vectors) >= self.file_batch_size:
-                    # save batch file
-                    clip_vectors= self.clip_vectors.copy()
-                    vae_latents= self.vae_latents.copy()
-
-                    self.clip_vectors =[]
-                    self.vae_latents =[]
-
-                    thread = threading.Thread(target=save_latents_and_vectors, args=(self.minio_client, self.dataset, clip_vectors, vae_latents, self.image_hashes,))
-                    thread.start()
-                    self.threads.append(thread)
-            
+        
             index+=1
         
         # save any extra vectors to numpy files
@@ -315,10 +322,25 @@ class ImageExtractionPipeline:
 
         return extract_data
 
+    def load_clip_vector(self, image_data):
+        # get file path
+        file_path= image_data["file_path"]
+
+        # load clip vector
+        bucket_name, input_file_path = separate_bucket_and_file_path(file_path)
+        file_path = os.path.splitext(input_file_path)[0]
+
+        clip_path = file_path + "_clip_kandinsky.msgpack"
+        features_data = cmd.get_file_from_minio(self.minio_client, bucket_name, clip_path)
+        clip_vector = msgpack.unpackb(features_data.data)["clip-feature-vector"]
+        clip_vector = torch.tensor(clip_vector).squeeze()
+
+        return image_data, clip_vector
+
     def extract_images(self):
         print("loading external dataset images..........")
         try:
-            external_images= external_images_request.http_get_external_dataset_in_batches(dataset=self.dataset, batch_size=100000)
+            external_images= external_images_request.http_get_external_dataset_in_batches_without_extracts(dataset=self.dataset, batch_size=100000)
         except Exception as e:
             raise Exception(f"An error occured when querying the external image dataset: {e}.")
         
@@ -327,6 +349,7 @@ class ImageExtractionPipeline:
         processed_images= 0
         print("Extracting images.......")
         num_batches= math.ceil(total_images / self.batch_size)
+
         for batch_iter in range(0, num_batches):
             print(f"processing batch {batch_iter}")
             # getting start and end index for the batch
@@ -335,16 +358,38 @@ class ImageExtractionPipeline:
 
             # getting the batch
             images_batch= external_images[start_index:end_index]
+           
+            # filtering irrelevant images
+            futures=[]
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                for image in tqdm(images_batch):
+                    futures.append(executor.submit(self.load_clip_vector, image))
+            
+            # Collect results as they complete
+            clip_vectors=[]
+            images_batch=[]
+            print("Loading clip vectors for the image batch")
+            for future in tqdm(as_completed(futures)):
+                try:
+                    image_data, clip_vector = future.result()
+                    clip_vectors.append(clip_vector)
+                    images_batch.append(image_data)
+                except Exception as e:
+                    print(f"Failed to load clip vectors for an image: {e}")
+                
+            # filter irrelevant images
+            clip_vectors= torch.stack(clip_vectors)
+            filtered_batch= self.filter_external_images(images_batch, clip_vectors)
 
             # extracting the 512*512 image patches
-            extracts= extract_square_images(self.minio_client, images_batch, self.target_size)
+            extracts= extract_square_images(self.minio_client, self.clip, filtered_batch, self.target_size)
 
-            # filter the extracts by quality
-            extract_data= self.filter_extracts(external_images= images_batch,
+            # upload the extracts to minio and mongoDB
+            extract_data= self.upload_extracts(external_images= filtered_batch,
                                                extracted_images= extracts)
             
             processed_images+= len(extract_data)
-            print(f"{len(extract_data)} images filtered from {self.batch_size} images")
+            print(f"{len(extract_data)} images extracted from {self.batch_size} images")
             print(f"total extracted images: {processed_images}/{total_images}")
 
         # check if all upload threads are completed

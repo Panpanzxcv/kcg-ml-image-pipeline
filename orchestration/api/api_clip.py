@@ -472,6 +472,53 @@ def get_clip_vector_from_phrase(request: Request, phrase: str):
             http_status_code = 500, 
 
         )
+    
+@router.get("/clip/get-phrase-clip-vector", tags=["clip"], 
+            response_model=StandardSuccessResponseV1[GetClipPhraseResponse], 
+            status_code=200, 
+            responses=ApiResponseHandlerV1.listErrors([400,404,422,500]), 
+            description="Calculate and return the clip vector for a phrase")
+def calculate_clip_vector_from_phrase(request: Request, phrase: str):
+    
+    response_handler = ApiResponseHandlerV1(request)
+    try:
+       
+        vector = http_clip_server_clip_vector_from_phrase(phrase)
+        
+        if vector is None:
+            # add the phrase to the clip server if it's not found
+            status_code, _ = http_clip_server_add_phrase(phrase)  
+
+            if 200 <= status_code < 300:
+                # fetch the phrase clip vector from the server after it's been added
+                vector = http_clip_server_clip_vector_from_phrase(phrase)
+
+                return response_handler.create_success_response_v1(
+                    response_data=vector, 
+                    http_status_code=201, 
+                )
+            
+            else:
+                return response_handler.create_error_response_v1(
+                    error_code=ErrorCode.OTHER_ERROR,
+                    error_string="Clip server error", 
+                    http_status_code=500,        
+        
+                )
+        else:    
+            return response_handler.create_success_response_v1(
+                response_data= vector, 
+                http_status_code=200, 
+            )
+
+    except Exception as e:
+        print(f"Exception occurred: {e}")  # Print statement 5
+        return response_handler.create_error_response_v1(
+            ErrorCode.OTHER_ERROR, 
+            "Internal server error", 
+            http_status_code = 500, 
+
+        )
 
 
 @router.get("/clip/get-server-status", 

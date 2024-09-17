@@ -29,7 +29,7 @@ def parse_args():
     parser.add_argument('--bucket', required=True, help='name of bucket')
     parser.add_argument('--dataset', required=True, help='name of dataset')
     parser.add_argument('--model-type', required=True, help='type of model elm, linear or logistic', default="all")
-    parser.add_argument('--batch-size', required=False, default=256, type=int, help='batch size of the classifier models')
+    parser.add_argument('--batch-size', required=False, default=10000, type=int, help='batch size of the classifier models')
 
     args = parser.parse_args()
     return args
@@ -94,7 +94,7 @@ def load_model(minio_client, classifier_model_info, device):
     print(f"Loading classifier model {classifier_name}...")
 
     if 'clip-h' not in classifier_name:
-        print(f"Not support for classifier model: {classifier_name}")
+        print(f"No support for classifier model: {classifier_name}")
         return None
 
     if "elm" in classifier_name:
@@ -119,48 +119,48 @@ def load_model(minio_client, classifier_model_info, device):
         print(f"Not support for classifier model: {classifier_name}")
         return None
     
+    print(model_file_name)
+    
     return loaded_model
 
-def calculate_and_upload_scores(rank, world_size, dataset_names, datasets, image_source, classifier_models, batch_size):
+def calculate_and_upload_scores(rank, world_size, image_dataset, image_source, classifier_models, batch_size):
     initialize_dist_env(rank, world_size)
     rank_device = torch.device(f'cuda:{rank}')
 
-    for dataset_name, image_dataset in zip(dataset_names, datasets):
-        if rank == 0:
-            print(f"uploading {len(image_dataset)} scores for the {dataset_name}")
-        dataset = ClipDataset(image_dataset)
-        sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank)
-        dataloader = DataLoader(dataset, batch_size=batch_size, sampler=sampler, collate_fn=collate_fn)
+    dataset = ClipDataset(image_dataset)
+    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank)
+    dataloader = DataLoader(dataset, batch_size=batch_size, sampler=sampler, collate_fn=collate_fn)
 
-        start_time = time.time()
-        total_uploaded = 0
-        futures = []
+    start_time = time.time()
+    total_uploaded = 0
+    futures = []
 
-        with ThreadPoolExecutor(max_workers=50) as executor:
-            for classifier_id, classifier_data in classifier_models.items():
-                tag_id = classifier_data["tag_id"]
-                classifier_model = classifier_data["model"]
-                classifier_model.set_device(rank_device)
 
-                print_in_rank(f"calculating scores for classifier id {classifier_id}")
+    with ThreadPoolExecutor(max_workers=50) as executor:
+        for classifier_id, classifier_data in classifier_models.items():
+            tag_id = classifier_data["tag_id"]
+            classifier_model = classifier_data["model"]
+            classifier_model.set_device(rank_device)
 
-                try:
-                    for batch_idx, image_data in enumerate(tqdm(dataloader)):
-                        clip_vectors = image_data["clip_vectors"]
-                        uuids = image_data["uuids"]
-                        image_hashes = image_data["image_hashes"]
-                        image_uuids = image_data["image_uuids"] 
+            print_in_rank(f"calculating scores for classifier id {classifier_id}")
 
-                        clip_vectors = clip_vectors.to(rank_device)
+            try:
+                for batch_idx, image_data in enumerate(tqdm(dataloader)):
+                    clip_vectors = image_data["clip_vectors"]
+                    uuids = image_data["uuids"]
+                    image_hashes = image_data["image_hashes"]
+                    image_uuids = image_data["image_uuids"]
 
-                        with torch.no_grad():
-                            scores = classifier_model.classify(clip_vectors)
+                    clip_vectors = clip_vectors.to(rank_device)
+
+                    with torch.no_grad():
+                        scores = classifier_model.classify(clip_vectors)
 
                         scores_batch = {"scores": []}
-                        for score, uuid, image_hash, image_uuid in zip(scores, uuids, image_hashes, image_uuids): 
+                        for score, uuid, image_hash, image_uuid in zip(scores, uuids, image_hashes, image_uuids):
                             score_data = {
                                 "job_uuid": uuid,
-                                "image_uuid": image_uuid,  
+                                "image_uuid": image_uuid,
                                 "image_hash": image_hash,
                                 "classifier_id": classifier_id,
                                 "tag_id": tag_id,
@@ -171,33 +171,34 @@ def calculate_and_upload_scores(rank, world_size, dataset_names, datasets, image
 
                         futures.append(executor.submit(request.http_add_classifier_score_batch, scores_batch=scores_batch))
 
-                    classifier_model.set_device(torch.device('cpu'))
+                classifier_model.set_device(torch.device('cpu'))
 
-                except Exception as e:
-                    print_in_rank(f"exception occurred when uploading scores {e}")
+            except Exception as e:
+                print_in_rank(f"exception occurred when uploading scores {e}")
 
-        last_report_time = time.time()
-        while futures:
-            for future in as_completed(futures):
-                try:
-                    future.result()  # Ensure any exceptions are raised
-                    total_uploaded += batch_size
-                except Exception as e:
-                    print_in_rank(f"Exception in future: {e}")
-                futures.remove(future)
 
-            current_time = time.time()
-            if current_time - last_report_time >= 10:
-                last_report_time = current_time
-                total_uploaded_tensor = torch.tensor(total_uploaded, device=rank_device)
-                dist.all_reduce(total_uploaded_tensor, op=dist.ReduceOp.SUM)
-                total_uploaded_all_ranks = total_uploaded_tensor.item()
+    last_report_time = time.time()
+    while futures:
+        for future in as_completed(futures):
+            try:
+                future.result()  # Ensure any exceptions are raised
+                total_uploaded += batch_size
+            except Exception as e:
+                print_in_rank(f"Exception in future: {e}")
+            futures.remove(future)
 
-                elapsed_time = time.time() - start_time
-                speed = total_uploaded_all_ranks / elapsed_time
-                print(f"Uploaded {total_uploaded_all_ranks} scores at {speed:.2f} scores/sec")
+        current_time = time.time()
+        if current_time - last_report_time >= 10:
+            last_report_time = current_time
+            total_uploaded_tensor = torch.tensor(total_uploaded, device=rank_device)
+            dist.all_reduce(total_uploaded_tensor, op=dist.ReduceOp.SUM)
+            total_uploaded_all_ranks = total_uploaded_tensor.item()
 
-        dist.barrier()
+            elapsed_time = time.time() - start_time
+            speed = total_uploaded_all_ranks / elapsed_time
+            print(f"Uploaded {total_uploaded_all_ranks} scores at {speed:.2f} scores/sec")
+
+    dist.barrier()
 
     cleanup()
 
@@ -230,9 +231,15 @@ def main():
         classifier_id = classifier_info["classifier_id"]
         classifier_name = classifier_info["classifier_name"]
         tag_id = classifier_info["tag_id"]
-        classifier_model= None
+        classifier_model = None
 
-        if model_type in classifier_name or model_type=="all":
+        if bucket_name == "external" and "all_resolutions" not in classifier_name:
+            continue
+
+        if (bucket_name == "extracts" or bucket_name == "datasets") and "all_resolutions" in classifier_name:
+            continue
+
+        if (model_type in classifier_name or model_type=="all"):
             classifier_model = load_model(minio_client, classifier_info, torch.device('cpu'))
 
         if classifier_model is not None:
@@ -246,14 +253,11 @@ def main():
             print(f"Loading the {dataset} dataset")
             dataset_loader = ImageDatasetLoader(minio_client, bucket_name, dataset)
             image_dataset = dataset_loader.load_dataset()
-            datasets.append(image_dataset)
+            mp.spawn(calculate_and_upload_scores, args=(world_size, image_dataset, image_source, classifier_models, batch_size), nprocs=world_size, join=True)
     else:
-        dataset_names=[args.dataset]
         dataset_loader = ImageDatasetLoader(minio_client, bucket_name, args.dataset)
         image_dataset = dataset_loader.load_dataset()
-        datasets.append(image_dataset)
-
-    mp.spawn(calculate_and_upload_scores, args=(world_size, dataset_names, datasets, image_source, classifier_models, batch_size), nprocs=world_size, join=True)
+        mp.spawn(calculate_and_upload_scores, args=(world_size, image_dataset, image_source, classifier_models, batch_size), nprocs=world_size, join=True)
 
 if __name__ == "__main__":
     main()

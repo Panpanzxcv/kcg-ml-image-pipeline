@@ -14,6 +14,7 @@ from torchvision.transforms.v2 import RandomResizedCrop
 base_dir = "./"
 sys.path.insert(0, base_dir)
 sys.path.insert(0, os.getcwd())
+from kandinsky.models.clip_image_encoder.clip_image_encoder import KandinskyCLIPImageEncoder
 from kandinsky.utils_image import save_latent_to_minio
 from utility.minio import cmd
 from utility.path import separate_bucket_and_file_path
@@ -22,17 +23,20 @@ from utility.http import request, external_images_request
 
 EXTRACT_BUCKET= "extracts"
 
-def extract_square_images(minio_client: Minio, 
-                        external_image_data: list,
-                        target_size: int = 512):
+def extract_square_images(minio_client: Minio,
+                          clip_model: KandinskyCLIPImageEncoder, 
+                          external_image_data: list,
+                          target_size: int = 512,
+                          num_patches: int = 5):
     
-    print("Extracting images.........")
-    # get file paths
-    file_paths= [image['file_path'] for image in external_image_data]
+    print("Extracting 512*512 images.........")
+    file_paths = [image['file_path'] for image in external_image_data]
+    relevance_models = [image['relevance_model'] for image in external_image_data]
+    
+    extracted_images = []
 
-    extracted_images=[]
-    for path in tqdm(file_paths):
-        # get image from minio server
+    # Step 1: Generate patches for each image
+    for i, path in enumerate(tqdm(file_paths)):
         bucket_name, file_path = separate_bucket_and_file_path(path)
         try:
             response = minio_client.get_object(bucket_name, file_path)
@@ -44,23 +48,50 @@ def extract_square_images(minio_client: Minio,
         finally:
             response.close()
             response.release_conn()
-        
+
+        patches = []
         if img.size != (target_size, target_size):
-            # get feature
-            scale = min((target_size / min(img.size)) ** 2, .5)
+            for _ in range(num_patches):
+                scale = min((target_size / min(img.size)) ** 2, .5)
+                params = RandomResizedCrop.get_params(img, scale=(scale, 1), ratio=(1., 1.))
+                patch = VF.resized_crop(img, *params, size=target_size, interpolation=VF.InterpolationMode.BICUBIC, antialias=True)
+                patches.append(patch)
+        else:
+            patches = [img]
 
-            params = RandomResizedCrop.get_params(img, scale=(scale, 1), ratio=(1.,1.))
-            img = VF.resized_crop(img, *params, size=target_size, interpolation=VF.InterpolationMode.BICUBIC, antialias=True)
-
-            # Convert the resized image back to bytes
-            image_data = BytesIO()
-            img.save(image_data, format='JPEG')
-            image_data.seek(0)  # Reset buffer position to the beginning
-        
         extracted_images.append({
-                "image": img,
-                "image_data": image_data
+            "images": patches,
+            "relevance_model": relevance_models[i]
         })
+    
+    # Step 2: Run classifier to determine best patches
+    print("Selecting the best patch for each image")
+    for i, image_info in enumerate(tqdm(extracted_images)):
+        relevance_model = image_info['relevance_model']
+
+        patches= image_info['images']
+        patches_clip_vectors= []
+        for patch in patches:
+            patches_clip_vectors.append(clip_model.get_image_features(patch).squeeze())
+         
+        patches_clip_vectors= torch.stack(patches_clip_vectors).to(dtype=torch.float32)
+        with torch.no_grad():
+            classifier_scores = relevance_model.classify(patches_clip_vectors).squeeze()
+
+        # Step 3: Select the patch with the highest score
+        highest_scoring_idx = classifier_scores.argmax().item()
+        highest_scoring_patch = patches[highest_scoring_idx]
+        highest_scoring_clip_vector= patches_clip_vectors[highest_scoring_idx]
+        highest_scoring_image_data = BytesIO()
+        highest_scoring_patch.save(highest_scoring_image_data, format='JPEG')
+        highest_scoring_image_data.seek(0)
+
+        # Store the highest-scoring patch in the final result
+        extracted_images[i] = {
+            "image": highest_scoring_patch,
+            "image_data": highest_scoring_image_data,
+            "clip_vector": highest_scoring_clip_vector
+        }
     
     return extracted_images
 
