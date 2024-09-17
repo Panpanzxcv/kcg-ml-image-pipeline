@@ -67,7 +67,7 @@ def save_datasets_to_txt(file_path, datasets):
 
 # Process selected datasets and check if clip_vector count is less than image count
 def process_selected_datasets():
-    bucket_name = 'external'
+    bucket_name = 'extracts'
     datasets = list_datasets(bucket_name)
     datasets_with_fewer_clip_vectors = []
 
