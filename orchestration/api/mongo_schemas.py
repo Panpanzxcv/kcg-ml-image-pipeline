@@ -302,6 +302,7 @@ class OldRankingScoreForBatchInsertion(BaseModel):
     rank_model_id: int
     rank_id: int
     uuid: str
+    image_uuid: str
     image_hash: str
     score: float    
     sigma_score: float
@@ -631,12 +632,12 @@ class ClassifierScoreRequest(BaseModel):
 
 class ClassifierScoreRequestV1(BaseModel):
     job_uuid: str
+    image_uuid: str
     classifier_id: int
     score: float
     tag_id: int
     image_hash: str
     image_source: str
-    image_uuid: str
 
 class ClassifierScoreRequestV2(BaseModel):
     job_uuid: str

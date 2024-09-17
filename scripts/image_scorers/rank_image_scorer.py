@@ -75,14 +75,16 @@ class ClipDataset(Dataset):
         return {
             'clip_vector': torch.tensor(self.data[idx]["clip_vector"]).squeeze(),
             'uuid': self.data[idx]["uuid"],
-            'image_hash': self.data[idx]["image_hash"]
+            'image_hash': self.data[idx]["image_hash"],
+            'image_uuid': self.data[idx]["image_uuid"]  
         }
     
 def collate_fn(batch):
     clip_vectors = torch.stack([item['clip_vector'] for item in batch])
     uuids = [item['uuid'] for item in batch]
     image_hashes = [item['image_hash'] for item in batch]
-    return {'uuids': uuids, 'image_hashes':image_hashes , 'clip_vectors': clip_vectors}
+    image_uuids = [item['image_uuid'] for item in batch]  
+    return {'uuids': uuids, 'image_uuids': image_uuids,  'image_hashes': image_hashes, 'clip_vectors': clip_vectors}
 
 def load_model(minio_client, rank_id, model_type, model_path, device):
 
@@ -139,21 +141,20 @@ def calculate_and_upload_scores(rank, world_size, image_dataset, image_source, r
 
             try:
                 for batch_idx, image_data in enumerate(tqdm(dataloader)):
-
                     clip_vector = image_data["clip_vectors"]
                     clip_vector = clip_vector.to(rank_device)
 
                     uuid = image_data["uuids"][0]
                     image_hash = image_data["image_hashes"][0]
-                    
+                    image_uuid = image_data["image_uuids"][0]
                     score = ranking_model.predict_clip(clip_vector).item()
-                    sigma_score= (score - score_mean) / score_std
-                    
+                    sigma_score = (score - score_mean) / score_std
                     score_data = {
                         "rank_model_id": model_id,
                         "rank_id": rank_id,
                         "image_hash": image_hash,
                         "uuid": uuid,
+                        "image_uuid": image_uuid,
                         "score": score,
                         "sigma_score": sigma_score,
                         "image_source": image_source

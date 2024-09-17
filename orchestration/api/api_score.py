@@ -212,6 +212,7 @@ async def set_image_rank_score_batch(
 
             new_score_data = {
                 "uuid": ranking_score.uuid,
+                "image_uuid": Uuid64.from_formatted_string(ranking_score.image_uuid).to_mongo_value(),
                 "rank_model_id": ranking_score.rank_model_id,
                 "rank_id": ranking_score.rank_id,
                 "score": ranking_score.score,

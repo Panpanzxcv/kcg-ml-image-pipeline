@@ -75,14 +75,17 @@ class ClipDataset(Dataset):
         return {
             'clip_vector': torch.tensor(self.data[idx]["clip_vector"]).squeeze(),
             'uuid': self.data[idx]["uuid"],
-            'image_hash': self.data[idx]["image_hash"]
+            'image_hash': self.data[idx]["image_hash"],
+            'image_uuid': self.data[idx]["image_uuid"] 
         }
     
 def collate_fn(batch):
     clip_vectors = torch.stack([item['clip_vector'] for item in batch])
     uuids = [item['uuid'] for item in batch]
     image_hashes = [item['image_hash'] for item in batch]
-    return {'uuids': uuids, 'image_hashes':image_hashes , 'clip_vectors': clip_vectors}
+    image_uuids = [item['image_uuid'] for item in batch]  
+    return {'uuids': uuids, 'image_uuids': image_uuids, 'image_hashes': image_hashes, 'clip_vectors': clip_vectors}
+
 
 def load_model(minio_client, classifier_model_info, device):
     classifier_name = classifier_model_info["classifier_name"]
@@ -146,6 +149,7 @@ def calculate_and_upload_scores(rank, world_size, dataset_names, datasets, image
                         clip_vectors = image_data["clip_vectors"]
                         uuids = image_data["uuids"]
                         image_hashes = image_data["image_hashes"]
+                        image_uuids = image_data["image_uuids"] 
 
                         clip_vectors = clip_vectors.to(rank_device)
 
@@ -153,9 +157,10 @@ def calculate_and_upload_scores(rank, world_size, dataset_names, datasets, image
                             scores = classifier_model.classify(clip_vectors)
 
                         scores_batch = {"scores": []}
-                        for score, uuid, image_hash in zip(scores, uuids, image_hashes):
+                        for score, uuid, image_hash, image_uuid in zip(scores, uuids, image_hashes, image_uuids): 
                             score_data = {
                                 "job_uuid": uuid,
+                                "image_uuid": image_uuid,  
                                 "image_hash": image_hash,
                                 "classifier_id": classifier_id,
                                 "tag_id": tag_id,

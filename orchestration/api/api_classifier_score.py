@@ -1109,13 +1109,13 @@ async def set_image_classifier_score_v2(
 
             new_score_data = {
                 "uuid": classifier_score.job_uuid,
+                "image_uuid": Uuid64.from_formatted_string(classifier_score.image_uuid).to_mongo_value(),
                 "classifier_id": classifier_score.classifier_id,
                 "tag_id": classifier_score.tag_id,
                 "score": classifier_score.score,
                 "image_hash": classifier_score.image_hash,
                 "creation_time": datetime.utcnow().isoformat(),
                 "image_source": classifier_score.image_source,
-                "image_uuid": Uuid64.from_formatted_string(classifier_score.image_uuid).to_mongo_value()
             }
 
             update_operation = UpdateOne(
